@@ -1,0 +1,7 @@
+# 02-applications/jupyterhub/01-namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: jupyterhub
+  labels:
+    name: jupyterhub
