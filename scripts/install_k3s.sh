@@ -41,6 +41,12 @@ if ! command -v curl >/dev/null 2>&1; then
   apt-get install -y --no-install-recommends curl
 fi
 
+# k3s가 필요로 하는 호스트 의존성 패키지 설치 (네트워크/iptables/conntrack 등)
+log "k3s 전제 조건 패키지 설치 검사 및 설치 (iptables, iproute2, conntrack, socat)"
+apt-get update
+apt-get install -y --no-install-recommends iptables iproute2 conntrack socat ca-certificates gnupg2
+
+
 # 기본 실행 옵션
 export INSTALL_K3S_EXEC="--container-runtime-endpoint unix:///run/containerd/containerd.sock --disable=traefik"
 
@@ -61,3 +67,24 @@ fi
 
 log "k3s 설치 완료. kubeconfig는 /etc/rancher/k3s/k3s.yaml 입니다."
 log "설치 로그는 $LOGFILE 에 기록되어 있습니다. 문제가 있으면 해당 파일을 확인하세요."
+
+# 설치 이후 상태 점검: systemd 서비스 상태와 최근 로그를 함께 수집
+log "k3s 서비스 상태를 수집합니다..."
+if systemctl list-units --type=service --all | grep -q '^k3s.service'; then
+  systemctl status k3s --no-pager | sed -n '1,200p' >>"$LOGFILE" 2>&1 || true
+  journalctl -u k3s --no-pager -n 200 >>"$LOGFILE" 2>&1 || true
+else
+  log "k3s.service 유닛이 보이지 않습니다. /usr/local/bin/k3s-uninstall.sh 또는 설치 로그 확인 필요"
+fi
+
+# containerd와 kubelet(내장) 상태도 수집
+if systemctl list-units --type=service --all | grep -q '^containerd.service'; then
+  systemctl status containerd --no-pager | sed -n '1,200p' >>"$LOGFILE" 2>&1 || true
+  journalctl -u containerd --no-pager -n 200 >>"$LOGFILE" 2>&1 || true
+fi
+
+if [ -f /etc/rancher/k3s/k3s.yaml ]; then
+  log "/etc/rancher/k3s/k3s.yaml 이 존재합니다. kubectl으로 노드 확인 시도(단, KUBECONFIG 설정 필요)."
+else
+  log "/etc/rancher/k3s/k3s.yaml 이 존재하지 않습니다. 설치가 완전히 끝나지 않았을 수 있습니다."
+fi
