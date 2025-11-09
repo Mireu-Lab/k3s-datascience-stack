@@ -39,8 +39,8 @@ proxy:
 singleuser:
   # 위에서 빌드한 사용자 Docker 이미지
   image:
-    name: "your-dockerhub-username/jupyter-data-server"
-    tag: "latest"
+    name: "ghcr.io/mireu-lab/k3s-datascience-stack"
+    tag: "main"
   # GPU 리소스 할당
   extraResourceLimits:
     nvidia.com/gpu: "1"
