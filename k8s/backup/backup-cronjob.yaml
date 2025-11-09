@@ -1,0 +1,53 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cold-data-backup
+spec:
+  schedule: "0 3 * * *" # 매일 03:00
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: backup
+              image: google/cloud-sdk:alpine
+              command: ["/bin/sh","-c","/opt/backup/backup.sh"]
+              env:
+                - name: NVME_MOUNT
+                  value: "/mnt/nvme"
+                - name: HDD_MOUNT
+                  value: "/mnt/hdd"
+                - name: GCS_BUCKET
+                  valueFrom:
+                    secretKeyRef:
+                      name: gcs-bucket
+                      key: bucket
+              volumeMounts:
+                - name: nvme
+                  mountPath: /mnt/nvme
+                - name: hdd
+                  mountPath: /mnt/hdd
+                - name: backup-script
+                  mountPath: /opt/backup
+          restartPolicy: OnFailure
+          volumes:
+            - name: nvme
+              hostPath:
+                path: /mnt/nvme
+            - name: hdd
+              hostPath:
+                path: /mnt/hdd
+            - name: backup-script
+              configMap:
+                name: backup-script-cm
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backup-script-cm
+data:
+  backup.sh: |
+    #!/bin/sh
+    set -e
+    /opt/backup/backup.sh

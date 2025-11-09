@@ -1,0 +1,31 @@
+# Helm values.yaml 예시 (jupyterhub/jupyterhub) - 간단 예시입니다.
+proxy:
+  secretToken: "REPLACE_WITH_RANDOM_TOKEN"
+hub:
+  extraConfig: |
+    c.JupyterHub.authenticator_class = 'oauthenticator.GoogleOAuthenticator'
+    # 실제 Google OAuth 설정은 추가로 client_id/client_secret 설정 필요
+
+singleuser:
+  image:
+    name: "ghcr.io/mireu-lab/jupyteruser"
+    tag: "latest"
+  storage:
+    type: pvc
+    extraVolumes: []
+    capacity: 10Gi
+
+ingress:
+  enabled: true
+  hosts:
+    - host: hub.mireu.xyz
+      paths: ["/"]
+
+auth:
+  type: "google"
+  google:
+    clientId: "REPLACE_CLIENT_ID"
+    clientSecret: "REPLACE_CLIENT_SECRET"
+
+rbac:
+  create: true

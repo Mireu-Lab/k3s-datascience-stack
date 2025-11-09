@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hdfs-single
+  labels:
+    app: hdfs-single
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hdfs-single
+  template:
+    metadata:
+      labels:
+        app: hdfs-single
+    spec:
+      containers:
+        - name: namenode
+          image: bde2020/hadoop-namenode:3.2.1-hadoop3.2.1-java8
+          env:
+            - name: CLUSTER_NAME
+              value: hdfs-cluster
+          ports:
+            - containerPort: 9870
+          volumeMounts:
+            - name: hadoop-data
+              mountPath: /hadoop/dfs/name
+        - name: datanode
+          image: bde2020/hadoop-datanode:3.2.1-hadoop3.2.1-java8
+          volumeMounts:
+            - name: hadoop-data
+              mountPath: /hadoop/dfs/data
+      volumes:
+        - name: hadoop-data
+          emptyDir: {}
+
+# 참고: 이 구성은 생산용이 아니며, HDFS 클러스터를 구축하려면 StatefulSet/PVC 및 네트워크 설정이 필요합니다.
