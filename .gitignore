@@ -1,0 +1,15 @@
+# Local config files
+config/config.env
+
+# GCP Service Account Key
+gcp-sa-key.json
+
+# Generated files
+*.generated.yaml
+
+# IDE and OS specific
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
