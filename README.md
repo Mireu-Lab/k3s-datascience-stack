@@ -1,52 +1,66 @@
-# 목표
+# k3s-datascience-stack
 
-나는 주어진 시스템으로 데이터 분석 용 서버를 구현하고자 한다
-나는 JupyterHub로 로그인 시스템을 단일화 하고, 나머지 부가적인 기능들 Apache Spark, PostgreSQL, Apache Hadoop, Google JAX를 사용할수있는 FrameWork가 필요하다.
-나는 데이터 분석 및 ML/DL/RL 실험용으로 시스템을 구축하고자 하는것이다.
-내가 제시하는 방식을 구현할수있는 파일를 작성하여 출력하시오.
+이 저장소는 단일 노드(HP Z440)에서 K3s 기반의 데이터 과학 스택을 구성하기 위한 예시 스크립트 및 Kubernetes 매니페스트를 포함합니다.
 
+주요 구성 요소:
+- JupyterHub (Helm chart를 이용한 배포 예시)
+- Apache Spark (간단한 standalone 예시)
+- PostgreSQL (StatefulSet)
+- Hadoop (간단한 single-node 예시)
+- NVIDIA device plugin (GPU 사용을 위한 DaemonSet 예시)
+- Cold-data 백업 스크립트 및 Kubernetes CronJob
+- 디스크 초기화/마운트 스크립트
+- k3s 설치/제거 스크립트
 
-# 참고
+중요 가정 및 주의사항:
+- 스크립트는 파티션/포맷 등을 수행하므로 반드시 백업 후 사용하세요.
+- 실제 운영 환경에서는 Helm 차트 설정, HTTPS/Ingress, 인증(OAuth/LDAP), RBAC 정책을 보다 엄격히 구성해야 합니다.
+- JAX/GPU 사용은 올바른 호스트 드라이버, CUDA 라이브러리 및 컨테이너 내 CUDA 런타임 버전이 일치해야 합니다.
 
-- 사용할수있는 도메인은 *.mireu.xyz입니다. (DNS서비스는 CloudFlare를 활용합니다.)
-- 단, 모든 설치가 처음부터 진행하는게 아니라서 제거하고 재설치 하는 형태로 제시하여야합니다.
-- 모든 프로그램들의 설정을 제시하여 출력하여야 합니다.
-- 디스크 또한 처음부터 셋팅 할수있도록 하여야합니다. (예시로 파티션 제거후 재 생성)
-- 이미 설치 되어있는 패키지는 제외하고 진행하여야합니다.
-- github로 Container Image와 Code를 배포할수있도록 각 파일로 분류하여야합니다.
+파일 목록(주요):
+- scripts/setup_disk.sh : NVMe/HDD 파티션, 포맷 및 /etc/fstab 등록
+- scripts/install_k3s.sh : k3s 설치
+- scripts/uninstall_k3s.sh : k3s 제거
+- scripts/install_nvidia.sh : NVIDIA 드라이버 + nvidia-container-toolkit 설치 시도
+- docker/jupyteruser.Dockerfile : Jupyter singleuser 이미지 예시
+- k8s/jupyterhub/values.yaml : JupyterHub Helm values 예시
+- k8s/postgres/postgres-statefulset.yaml : PostgreSQL StatefulSet
+- k8s/spark/spark-deploy.yaml : Spark master/worker 예시
+- k8s/hdfs/hadoop-deployment.yaml : 간단한 HDFS 예시
+- k8s/nvidia-device-plugin/nvidia-device-plugin.yaml : NVIDIA device plugin DaemonSet
+- k8s/backup/backup.sh : 백업 스크립트
+- k8s/backup/backup-cronjob.yaml : CronJob 매니페스트
 
-# 시스템 구성
+빠른 시작 (권장: 테스트 노드에서 단계별로 진행):
 
-- HW : HP Z440
-- CPU : INTEL E5-2666 v3
-- RAM : DDR4 2666 8GB * 4 / DDR4 2666 16GB * 4 = 96GB
-- ROM#1 : SATA SSD 480GB [OS 설치]
-- ROM#2 : NVME PCI SSD 1TB * 2 (WD Black AN1500) [mount: /mnt/nvme]
-- ROM#3 : HDD 3.5inch 2TB [mount: /mnt/hdd]
-- GPU : NVIDIA GTX1080TI 11GB
-- OS : Ubuntu 24.04.02
-- NET : 1Gbps RJ45
+1) 디스크 초기화 (검토 후 실행)
 
-으로 **단일 구성**이 되어있다.
+   sudo bash scripts/setup_disk.sh
 
-# K3S (containerd) 설계 아키택쳐
+2) NVIDIA 드라이버 설치(필요한 경우)
 
-1. 데이터를 관리 및 전처리 할수있는 Apache Spark
-2. 정형 데이터인경우 PostgreSQL에 저장
-3. 비 정형 데이터인경우 Apache Hadoop를 가지고 데이터 저장 (예: 이미지, MP3, MP4)
-4. ~~모든 데이터를 Archive목적으로 GCP Cloud에 1주일 지나면 자동으로 압축하여 GCP Storage에 Upload~~
-5. 모든 데이터를 Cold Data목적으로 HDD에 1주일 지나면 자동으로 압축하여 GCP Storage에 Upload
-6. NVIDIA 드라이버가 설치 되어있는 JAX
-7. Google Cloud IAM으로 관리하는 RBAC
-8. 이 모든 형태를 관리하고 각 프로젝트 마다 새로운 네임스페이스를 생성하여 또는 계정을 분활 하여 프로젝트와 분리 관리를 할수있는 jupyter hub
+   sudo bash scripts/install_nvidia.sh
 
-## 데이터 관리
+3) k3s 설치
 
-1. Hot Data인경우 NVME SSD (SIZE 2TB)에 저장하여야합니다.
-2. Cold Data인경우 NVME SSD에서 HDD로 데이터를 백업 하여야 합니다.
-3. ~~Archive Data인경우 HDD에서 GCP Cloud Storage에 백업하여야 합니다.~~
+   sudo bash scripts/install_k3s.sh
 
-## 네트워크 관리
+4) Kubernetes 리소스 배포
 
-1. 추후에 네트워크 IP가 변경이 될수도 있습니다.
-2. 네트워크 IP는 단일적으로 구성되어있습니다.
+   # kubeconfig가 /etc/rancher/k3s/k3s.yaml 에 생성됩니다.
+   export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+   kubectl apply -f k8s/nvidia-device-plugin/nvidia-device-plugin.yaml
+   kubectl apply -f k8s/postgres/postgres-statefulset.yaml
+   kubectl apply -f k8s/spark/spark-deploy.yaml
+   kubectl apply -f k8s/hdfs/hadoop-deployment.yaml
+   kubectl apply -f k8s/backup/backup-cronjob.yaml
+
+5) JupyterHub 배포 (Helm 필요)
+
+   # Helm을 사용하여 jupyterhub 설치
+   # helm install jhub jupyterhub/jupyterhub --namespace jupyterhub -f k8s/jupyterhub/values.yaml
+
+검증 및 후속 작업:
+- 각 컴포넌트 로그 확인: kubectl -n <namespace> logs ...
+- GPU 사용 확인: kubectl run --rm -it --restart=Never --image=nvidia/cuda:12.1.1-base-ubuntu24.04 gpu-test -- nvidia-smi
+- GCP 업로드를 위한 서비스 계정 및 Secret 생성은 k8s/backup 문서를 참고 후 수동으로 적용하세요.
