@@ -1,0 +1,33 @@
+# datanode-daemonset.yaml
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: hdfs-datanode
+spec:
+  selector:
+    matchLabels:
+      app: hdfs-datanode
+  template:
+    metadata:
+      labels:
+        app: hdfs-datanode
+    spec:
+      containers:
+      - name: datanode
+        image: apache/hadoop:3.3.6
+        command: ["/bin/bash", "-c"]
+        args:
+          - "hdfs --daemon start datanode; tail -f /dev/null"
+        volumeMounts:
+        - name: hdfs-datanode-storage
+          mountPath: /hadoop/hdfs/datanode
+        - name: hdfs-config
+          mountPath: /opt/hadoop/etc/hadoop
+      volumes:
+      - name: hdfs-datanode-storage
+        hostPath:
+          path: /mnt/nvme/hdfs-datanode # DataNode는 각 노드의 로컬 스토리지를 직접 사용
+          type: DirectoryOrCreate
+      - name: hdfs-config
+        configMap:
+          name: hdfs-config

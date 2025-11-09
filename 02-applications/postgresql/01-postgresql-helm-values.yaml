@@ -1,0 +1,7 @@
+# 02-applications/postgresql/01-postgresql-helm-values.yaml
+global:
+  storageClass: "nvme-hot-storage"
+
+primary:
+  persistence:
+    size: 50Gi

@@ -1,0 +1,29 @@
+# hdfs-configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hdfs-config
+  namespace: default
+data:
+  core-site.xml: |
+    <configuration>
+        <property>
+            <name>fs.defaultFS</name>
+            <value>hdfs://namenode-service:9000</value>
+        </property>
+    </configuration>
+  hdfs-site.xml: |
+    <configuration>
+        <property>
+            <name>dfs.replication</name>
+            <value>1</value>
+        </property>
+        <property>
+            <name>dfs.namenode.name.dir</name>
+            <value>file:///hadoop/hdfs/namenode</value>
+        </property>
+        <property>
+            <name>dfs.datanode.data.dir</name>
+            <value>file:///hadoop/hdfs/datanode</value>
+        </property>
+    </configuration>

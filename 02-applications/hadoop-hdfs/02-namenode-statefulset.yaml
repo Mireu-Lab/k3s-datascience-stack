@@ -1,0 +1,60 @@
+# namenode-statefulset.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: namenode-service
+spec:
+  selector:
+    app: hdfs-namenode
+  ports:
+    - protocol: TCP
+      port: 9000
+      targetPort: 9000
+      name: rpc
+    - protocol: TCP
+      port: 9870
+      targetPort: 9870
+      name: http
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: hdfs-namenode
+spec:
+  serviceName: "namenode-service"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hdfs-namenode
+  template:
+    metadata:
+      labels:
+        app: hdfs-namenode
+    spec:
+      containers:
+      - name: namenode
+        image: apache/hadoop:3.3.6
+        command: ["/bin/bash", "-c"]
+        args:
+          - "if [ ! -d /hadoop/hdfs/namenode/current ]; then hdfs namenode -format; fi; hdfs --daemon start namenode; tail -f /dev/null"
+        ports:
+        - containerPort: 9000
+        - containerPort: 9870
+        volumeMounts:
+        - name: hdfs-namenode-storage
+          mountPath: /hadoop/hdfs/namenode
+        - name: hdfs-config
+          mountPath: /opt/hadoop/etc/hadoop
+      volumes:
+      - name: hdfs-config
+        configMap:
+          name: hdfs-config
+  volumeClaimTemplates:
+  - metadata:
+      name: hdfs-namenode-storage
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: "nvme-hot-storage"
+      resources:
+        requests:
+          storage: 20Gi

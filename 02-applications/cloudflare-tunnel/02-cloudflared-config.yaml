@@ -1,0 +1,11 @@
+# 02-applications/cloudflare-tunnel/02-cloudflared-config.yaml
+secretName: cloudflare-tunnel-secret
+# Tunnel Ingress Rules
+# 이 설정은 JupyterHub 서비스가 생성된 후 해당 서비스로 트래픽을 라우팅합니다.
+# JupyterHub 서비스 이름과 네임스페이스를 정확히 기입해야 합니다.
+ingress:
+  - hostname: "jupyter.mireu.xyz"
+    service: http://jupyterhub-proxy-public.jupyterhub.svc.cluster.local:80
+  - hostname: "spark-ui.mireu.xyz" # 예시: Spark UI용
+    service: http://my-spark-app-ui-svc.spark.svc.cluster.local:4040 # Spark UI 서비스 주소
+  - service: http_status:404 # 일치하는 호스트가 없을 경우
