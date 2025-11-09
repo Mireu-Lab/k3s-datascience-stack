@@ -36,12 +36,41 @@ fi
 if [ "$toolkit_installed" = true ]; then
   echo "nvidia-container-runtime(또는 toolkit)이 이미 설치되어 있습니다. 설치 건너뜁니다."
 else
-  echo "nvidia-container-toolkit 설치를 진행합니다."
+  echo "nvidia-container-toolkit 설치를 진행합니다. (Debian/Ubuntu용 레포지터리 구성)"
+
+  # 필수 툴 설치
+  apt-get install -y --no-install-recommends curl gnupg2
+
+  # 키링 및 레포지터리 구성 (권장 방법)
+  KEYRING_PATH=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+  curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | gpg --dearmor -o "$KEYRING_PATH"
+
   distribution="$(. /etc/os-release; echo $ID$VERSION_ID)"
-  curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | apt-key add -
-  curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | tee /etc/apt/sources.list.d/nvidia-docker.list
+  curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+    sed "s#deb https://#deb [signed-by=$KEYRING_PATH] https://#g" | \
+    tee /etc/apt/sources.list.d/nvidia-container-toolkit.list >/dev/null
+
+  # experimental 채널을 사용하려면 환경변수 ENABLE_NVIDIA_EXPERIMENTAL=true 로 설정 가능
+  if [ "${ENABLE_NVIDIA_EXPERIMENTAL:-false}" = "true" ]; then
+    sed -i -e '/experimental/ s/^#//g' /etc/apt/sources.list.d/nvidia-container-toolkit.list || true
+  fi
+
   apt-get update
-  apt-get install -y nvidia-container-toolkit
+
+  # 특정 버전을 설치하려면 NVIDIA_CONTAINER_TOOLKIT_VERSION 환경변수 설정
+  if [ -n "${NVIDIA_CONTAINER_TOOLKIT_VERSION:-}" ]; then
+    ver="$NVIDIA_CONTAINER_TOOLKIT_VERSION"
+    echo "지정된 버전 설치: $ver"
+    apt-get install -y \
+      "nvidia-container-toolkit=${ver}" \
+      "nvidia-container-toolkit-base=${ver}" \
+      "libnvidia-container-tools=${ver}" \
+      "libnvidia-container1=${ver}"
+  else
+    echo "최신 nvidia-container-toolkit 설치"
+    apt-get install -y nvidia-container-toolkit
+  fi
+
   # container runtime 재시작: docker 또는 containerd가 존재하면 재시작 시도
   if systemctl list-units --type=service --all | grep -q '^docker.service'; then
     systemctl restart docker || true
