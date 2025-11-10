@@ -1,0 +1,46 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: datascience-ingress
+  namespace: datascience
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  tls:
+  - hosts:
+    - jupyter.mireu.xyz
+    - spark.mireu.xyz
+    - hadoop.mireu.xyz
+    secretName: mireu-xyz-tls
+  rules:
+  - host: jupyter.mireu.xyz
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: jupyterhub
+            port:
+              number: 8000
+  - host: spark.mireu.xyz
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: spark-ui
+            port:
+              number: 4040
+  - host: hadoop.mireu.xyz
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: hadoop-ui
+            port:
+              number: 9870
