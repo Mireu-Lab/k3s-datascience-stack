@@ -1,4 +1,4 @@
-ARG BASE_IMAGE=jupyter/base-notebook:python-3.11.15
+ARG BASE_IMAGE=jupyter/base-notebook:python-3.11.6
 ARG INSTALL_JAX=0
 ARG JAX_CUDA_WHEEL_URL=""
 
@@ -56,4 +56,6 @@ RUN if [ "${INSTALL_JAX}" = "1" ]; then \
 USER ${NB_UID}
 
 EXPOSE 8888
-CMD ["start-notebook.sh"]
+ENV JUPYTER_ENABLE_LAB=1
+# Ensure the notebook starts in Lab by default
+CMD ["start-notebook.sh", "--NotebookApp.default_url=/lab"]
