@@ -1,0 +1,20 @@
+# deployments/postgresql/cluster.yaml
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: postgres-db
+  namespace: default
+spec:
+  instances: 3
+  primaryUpdateStrategy: unsupervised
+  storage:
+    size: 100Gi
+    storageClass: "local-path" # Assuming k3s default storage class. For production, consider a more robust solution.
+  superuserSecret:
+    name: postgres-superuser-secret
+  postgresql:
+    parameters:
+      max_connections: "200"
+      shared_buffers: "2GB"
+  monitoring:
+    enablePodMonitor: true

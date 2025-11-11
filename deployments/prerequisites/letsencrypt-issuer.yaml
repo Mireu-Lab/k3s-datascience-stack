@@ -1,0 +1,15 @@
+# deployments/prerequisites/letsencrypt-issuer.yaml
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-production
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: "your-email@mireu.xyz" # IMPORTANT: Replace with your email address
+    privateKeySecretRef:
+      name: letsencrypt-production-private-key
+    solvers:
+    - http01:
+        ingress:
+          class: nginx # Make sure this matches your Ingress controller

@@ -1,0 +1,87 @@
+# deployments/jupyterhub/values.yaml
+proxy:
+  secretToken: "generate-a-long-random-string" # Replace with a generated secret token
+  service:
+    type: ClusterIP
+  https-:
+    enabled: true
+    type: ClusterIP
+
+ingress:
+  enabled: true
+  hosts:
+    - jupyter.mireu.xyz
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    cert-manager.io/cluster-issuer: "letsencrypt-production"
+  tls:
+   - hosts:
+       - jupyter.mireu.xyz
+     secretName: jupyterhub-tls
+
+hub:
+  config:
+    JupyterHub:
+      authenticator_class: google
+    GoogleOAuthenticator:
+      # These values are loaded from the secret created in deploy.sh
+      client_id:
+        from_secret:
+          name: google-oauth-secret
+          key: clientId
+      client_secret:
+        from_secret:
+          name: google-oauth-secret
+          key: clientSecret
+      oauth_callback_url:
+        from_secret:
+          name: google-oauth-secret
+          key: oauthCallbackUrl
+      hosted_domain:
+        - mireu.xyz # Optional: Restrict to users in this domain
+      login_service: "Google"
+    # Allow spawning of named servers
+    allow_named_servers: true
+    # KubeSpawner overrides for advanced configuration
+    spawner_class: "kubespawner.KubeSpawner"
+
+singleuser:
+  # Default image with JAX and GPU support.
+  # You should build and push your own image to a container registry.
+  image:
+    name: jupyter/tensorflow-notebook # As a base, contains CUDA. Add JAX to it.
+    tag: "latest"
+  # User storage configuration
+  storage:
+    type: dynamic
+    capacity: 20Gi
+    dynamic:
+      storageClass: "local-path" # Use a more robust storage class for production
+  # GPU Configuration
+  extraResourceGuarantees:
+    "nvidia.com/gpu": "1"
+  # Mount NVIDIA libraries
+  extraContainerConfig:
+    - name: LD_LIBRARY_PATH
+      value: /usr/local/nvidia/lib64
+  # Allow users to specify their own images
+  imageSelector:
+    enabled: true
+  # Lifecycle hooks for cloning git repos, etc.
+  lifecycleHooks:
+    postStart:
+      exec:
+        command:
+          - "sh"
+          - "-c"
+          - >
+            if [ -n "$GIT_REPO" ]; then
+              git clone $GIT_REPO /home/jovyan/work;
+            fi;
+  # Allow users to set environment variables like GIT_REPO
+  extraEnv:
+    JUPYTER_ENABLE_LAB: "yes"
+
+# RBAC
+rbac:
+  enabled: true
