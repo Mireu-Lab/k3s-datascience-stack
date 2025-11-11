@@ -1,4 +1,4 @@
-FROM nvcr.io/nvidia/cuda:12.3.0-cudnn9-runtime-ubuntu22.04
+FROM docker.io/nvidia/cuda:12.3.2-cudnn9-runtime-ubuntu22.04
 
 LABEL maintainer="Mireu Lab <admin@mireu.xyz>"
 LABEL description="Jupyter Lab with JAX GPU support for ML/DL/RL"
