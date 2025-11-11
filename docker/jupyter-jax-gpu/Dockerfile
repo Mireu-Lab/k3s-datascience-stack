@@ -80,8 +80,8 @@ RUN pip install --no-cache-dir \
 
 # Google Cloud Storage 지원
 RUN pip install --no-cache-dir \
-    google-cloud-storage==2.14.0 \
-    gcsfs==2023.12.2
+    google-cloud-storage \
+    gcsfs
 
 # 사용자 생성 (JupyterHub 호환)
 ARG NB_USER=jovyan
