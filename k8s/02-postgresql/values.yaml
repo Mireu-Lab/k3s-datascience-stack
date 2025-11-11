@@ -1,0 +1,79 @@
+# PostgreSQL Helm Values
+# Bitnami PostgreSQL Chart를 사용합니다
+
+global:
+  postgresql:
+    auth:
+      postgresPassword: "changeme-postgres-password"
+      username: "datauser"
+      password: "changeme-user-password"
+      database: "analytics"
+
+architecture: standalone
+
+primary:
+  persistence:
+    enabled: true
+    storageClass: "nvme-hot-storage"
+    size: 200Gi
+    accessModes:
+      - ReadWriteOnce
+
+  resources:
+    requests:
+      memory: "4Gi"
+      cpu: "2000m"
+    limits:
+      memory: "8Gi"
+      cpu: "4000m"
+
+  podAnnotations:
+    backup.velero.io/backup-volumes: data
+
+  nodeSelector:
+    kubernetes.io/hostname: ""  # 실제 노드 호스트명으로 변경
+
+  initdb:
+    scripts:
+      init.sql: |
+        -- 데이터 분석용 확장 설치
+        CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+        CREATE EXTENSION IF NOT EXISTS pgcrypto;
+        
+        -- 기본 스키마 생성
+        CREATE SCHEMA IF NOT EXISTS raw_data;
+        CREATE SCHEMA IF NOT EXISTS processed_data;
+        CREATE SCHEMA IF NOT EXISTS ml_models;
+        
+        -- 권한 설정
+        GRANT ALL PRIVILEGES ON SCHEMA raw_data TO datauser;
+        GRANT ALL PRIVILEGES ON SCHEMA processed_data TO datauser;
+        GRANT ALL PRIVILEGES ON SCHEMA ml_models TO datauser;
+
+  service:
+    type: ClusterIP
+    port: 5432
+
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    namespace: monitoring
+
+backup:
+  enabled: true
+  cronjob:
+    schedule: "0 2 * * *"
+    storage:
+      size: 50Gi
+      storageClass: "hdd-cold-storage"
+
+networkPolicy:
+  enabled: true
+  allowExternal: false
+  # JupyterHub, Spark에서의 접근 허용
+  ingress:
+    - from:
+      - namespaceSelector:
+          matchLabels:
+            name: datascience

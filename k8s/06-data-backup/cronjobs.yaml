@@ -1,0 +1,278 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backup-scripts
+  namespace: storage
+data:
+  hot-to-cold.sh: |
+    #!/bin/bash
+    # Hot Data (NVME) -> Cold Data (HDD) 백업
+    # 2일 이상 지난 파일을 HDD로 이동하고 압축
+    
+    set -e
+    
+    HOT_PATH="/mnt/nvme/hot-data"
+    COLD_PATH="/mnt/hdd/cold-data"
+    DAYS=2
+    
+    echo "Starting Hot to Cold backup: $(date)"
+    
+    # 2일 이상 지난 파일 찾기
+    find "$HOT_PATH" -type f -mtime +$DAYS | while read file; do
+      # 상대 경로 계산
+      relative_path="${file#$HOT_PATH/}"
+      target_dir="$COLD_PATH/$(dirname "$relative_path")"
+      target_file="$COLD_PATH/$relative_path"
+      
+      # 대상 디렉토리 생성
+      mkdir -p "$target_dir"
+      
+      # 파일 체크섬 계산
+      src_sum=$(md5sum "$file" | awk '{print $1}')
+      
+      # 이미 백업된 파일이 있는지 확인
+      if [ -f "$target_file.gz" ]; then
+        # 압축 해제하여 체크섬 비교
+        gunzip -c "$target_file.gz" | md5sum | awk '{print $1}' > /tmp/dst_sum
+        dst_sum=$(cat /tmp/dst_sum)
+        
+        if [ "$src_sum" == "$dst_sum" ]; then
+          echo "File already backed up and unchanged: $relative_path"
+          # 원본 파일 삭제
+          rm -f "$file"
+          continue
+        fi
+      fi
+      
+      # 파일 압축 및 이동
+      echo "Backing up: $relative_path"
+      gzip -c "$file" > "$target_file.gz"
+      
+      # 백업 확인
+      gunzip -c "$target_file.gz" | md5sum | awk '{print $1}' > /tmp/backup_sum
+      backup_sum=$(cat /tmp/backup_sum)
+      
+      if [ "$src_sum" == "$backup_sum" ]; then
+        echo "Backup verified: $relative_path"
+        rm -f "$file"
+      else
+        echo "Backup verification failed: $relative_path"
+        rm -f "$target_file.gz"
+        exit 1
+      fi
+    done
+    
+    echo "Hot to Cold backup completed: $(date)"
+  
+  cold-to-archive.sh: |
+    #!/bin/bash
+    # Cold Data (HDD) -> Archive (GCP Storage) 백업
+    # 1주일 이상 지난 파일을 GCP Storage로 아카이브
+    
+    set -e
+    
+    COLD_PATH="/mnt/hdd/cold-data"
+    DAYS=7
+    GCS_BUCKET="gs://YOUR_BUCKET_NAME/archive"
+    
+    echo "Starting Cold to Archive backup: $(date)"
+    
+    # GCP 인증 설정
+    if [ -f "/secrets/gcp/credentials.json" ]; then
+      gcloud auth activate-service-account --key-file=/secrets/gcp/credentials.json
+    else
+      echo "GCP credentials not found!"
+      exit 1
+    fi
+    
+    # 1주일 이상 지난 압축 파일 찾기
+    find "$COLD_PATH" -type f -name "*.gz" -mtime +$DAYS | while read file; do
+      # 상대 경로 계산
+      relative_path="${file#$COLD_PATH/}"
+      gcs_path="$GCS_BUCKET/$relative_path"
+      
+      # 파일 체크섬 계산
+      src_sum=$(md5sum "$file" | awk '{print $1}')
+      
+      # GCS에 이미 있는지 확인
+      if gsutil -q stat "$gcs_path" 2>/dev/null; then
+        # GCS 파일 체크섬 확인
+        gsutil hash -m "$gcs_path" | grep "Hash (md5)" | awk '{print $3}' | base64 -d | xxd -p > /tmp/gcs_sum
+        gcs_sum=$(cat /tmp/gcs_sum)
+        
+        if [ "$src_sum" == "$gcs_sum" ]; then
+          echo "File already archived and unchanged: $relative_path"
+          rm -f "$file"
+          continue
+        fi
+      fi
+      
+      # GCS로 업로드
+      echo "Archiving: $relative_path"
+      gsutil -m cp "$file" "$gcs_path"
+      
+      # 업로드 확인
+      if gsutil -q stat "$gcs_path" 2>/dev/null; then
+        echo "Archive verified: $relative_path"
+        rm -f "$file"
+      else
+        echo "Archive verification failed: $relative_path"
+        exit 1
+      fi
+    done
+    
+    echo "Cold to Archive backup completed: $(date)"
+  
+  cleanup-empty-dirs.sh: |
+    #!/bin/bash
+    # 빈 디렉토리 정리
+    
+    echo "Cleaning up empty directories: $(date)"
+    
+    find /mnt/nvme/hot-data -type d -empty -delete
+    find /mnt/hdd/cold-data -type d -empty -delete
+    
+    echo "Cleanup completed: $(date)"
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: hot-to-cold-backup
+  namespace: storage
+spec:
+  # 매일 새벽 2시에 실행
+  schedule: "0 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: backup
+            image: google/cloud-sdk:alpine
+            command: ["/bin/bash", "/scripts/hot-to-cold.sh"]
+            volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+            - name: nvme-hot
+              mountPath: /mnt/nvme/hot-data
+            - name: hdd-cold
+              mountPath: /mnt/hdd/cold-data
+            resources:
+              requests:
+                memory: "512Mi"
+                cpu: "500m"
+              limits:
+                memory: "1Gi"
+                cpu: "1000m"
+          volumes:
+          - name: scripts
+            configMap:
+              name: backup-scripts
+              defaultMode: 0755
+          - name: nvme-hot
+            persistentVolumeClaim:
+              claimName: nvme-hot-pvc
+          - name: hdd-cold
+            persistentVolumeClaim:
+              claimName: hdd-cold-pvc
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cold-to-archive-backup
+  namespace: storage
+spec:
+  # 매주 일요일 새벽 3시에 실행
+  schedule: "0 3 * * 0"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: backup
+            image: google/cloud-sdk:alpine
+            command: ["/bin/bash", "/scripts/cold-to-archive.sh"]
+            volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+            - name: hdd-cold
+              mountPath: /mnt/hdd/cold-data
+            - name: gcp-credentials
+              mountPath: /secrets/gcp
+              readOnly: true
+            env:
+            - name: CLOUDSDK_CORE_PROJECT
+              value: "your-gcp-project-id"
+            resources:
+              requests:
+                memory: "1Gi"
+                cpu: "500m"
+              limits:
+                memory: "2Gi"
+                cpu: "1000m"
+          volumes:
+          - name: scripts
+            configMap:
+              name: backup-scripts
+              defaultMode: 0755
+          - name: hdd-cold
+            persistentVolumeClaim:
+              claimName: hdd-cold-pvc
+          - name: gcp-credentials
+            secret:
+              secretName: gcp-storage-credentials
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cleanup-empty-dirs
+  namespace: storage
+spec:
+  # 매일 새벽 4시에 실행
+  schedule: "0 4 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: cleanup
+            image: busybox:latest
+            command: ["/bin/sh", "/scripts/cleanup-empty-dirs.sh"]
+            volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+            - name: nvme-hot
+              mountPath: /mnt/nvme/hot-data
+            - name: hdd-cold
+              mountPath: /mnt/hdd/cold-data
+            resources:
+              requests:
+                memory: "128Mi"
+                cpu: "100m"
+              limits:
+                memory: "256Mi"
+                cpu: "200m"
+          volumes:
+          - name: scripts
+            configMap:
+              name: backup-scripts
+              defaultMode: 0755
+          - name: nvme-hot
+            persistentVolumeClaim:
+              claimName: nvme-hot-pvc
+          - name: hdd-cold
+            persistentVolumeClaim:
+              claimName: hdd-cold-pvc

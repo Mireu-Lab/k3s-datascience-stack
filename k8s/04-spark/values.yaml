@@ -1,0 +1,156 @@
+# Apache Spark Helm Values
+# Bitnami Spark Chart 사용
+
+image:
+  registry: docker.io
+  repository: bitnami/spark
+  tag: 3.5.0
+
+# Master 설정
+master:
+  replicaCount: 1
+  
+  resources:
+    requests:
+      memory: "4Gi"
+      cpu: "2000m"
+    limits:
+      memory: "8Gi"
+      cpu: "4000m"
+
+  persistence:
+    enabled: true
+    storageClass: "nvme-hot-storage"
+    size: 50Gi
+    accessModes:
+      - ReadWriteOnce
+
+  extraEnvVars:
+    - name: SPARK_MASTER_WEBUI_PORT
+      value: "8080"
+    - name: SPARK_MASTER_PORT
+      value: "7077"
+
+  nodeSelector:
+    kubernetes.io/hostname: ""  # 실제 노드 호스트명으로 변경
+
+# Worker 설정
+worker:
+  replicaCount: 1
+  
+  resources:
+    requests:
+      memory: "16Gi"
+      cpu: "4000m"
+    limits:
+      memory: "32Gi"
+      cpu: "8000m"
+
+  persistence:
+    enabled: true
+    storageClass: "nvme-hot-storage"
+    size: 200Gi
+    accessModes:
+      - ReadWriteOnce
+
+  extraEnvVars:
+    - name: SPARK_WORKER_MEMORY
+      value: "28G"
+    - name: SPARK_WORKER_CORES
+      value: "8"
+    - name: SPARK_WORKER_WEBUI_PORT
+      value: "8081"
+
+  nodeSelector:
+    kubernetes.io/hostname: ""  # 실제 노드 호스트명으로 변경
+
+# Spark 기본 설정
+sparkDefaults:
+  spark.driver.memory: "4g"
+  spark.executor.memory: "8g"
+  spark.executor.cores: "2"
+  spark.sql.warehouse.dir: "hdfs://hadoop-namenode.storage.svc.cluster.local:9000/spark-warehouse"
+  spark.eventLog.enabled: "true"
+  spark.eventLog.dir: "hdfs://hadoop-namenode.storage.svc.cluster.local:9000/spark-logs"
+  spark.history.fs.logDirectory: "hdfs://hadoop-namenode.storage.svc.cluster.local:9000/spark-logs"
+  # PostgreSQL 연동
+  spark.sql.catalogImplementation: "hive"
+  # 성능 최적화
+  spark.sql.adaptive.enabled: "true"
+  spark.sql.adaptive.coalescePartitions.enabled: "true"
+  spark.dynamicAllocation.enabled: "true"
+  spark.dynamicAllocation.minExecutors: "1"
+  spark.dynamicAllocation.maxExecutors: "4"
+
+# Spark History Server
+historyServer:
+  enabled: true
+  
+  resources:
+    requests:
+      memory: "2Gi"
+      cpu: "500m"
+    limits:
+      memory: "4Gi"
+      cpu: "1000m"
+
+  persistence:
+    enabled: true
+    storageClass: "nvme-hot-storage"
+    size: 20Gi
+
+# 서비스 설정
+service:
+  type: ClusterIP
+  ports:
+    master:
+      webui: 8080
+      cluster: 7077
+    worker:
+      webui: 8081
+    history:
+      webui: 18080
+
+# 메트릭
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    namespace: monitoring
+
+# 네트워크 정책
+networkPolicy:
+  enabled: true
+  allowExternal: false
+  ingress:
+    - from:
+      - namespaceSelector:
+          matchLabels:
+            name: datascience
+      - namespaceSelector:
+          matchLabels:
+            name: storage
+
+# HDFS와 PostgreSQL 연동을 위한 추가 설정
+extraVolumes:
+  - name: spark-libs
+    emptyDir: {}
+
+extraVolumeMounts:
+  - name: spark-libs
+    mountPath: /opt/bitnami/spark/jars-extra
+
+# PostgreSQL JDBC Driver와 기타 라이브러리 다운로드
+initContainers:
+  - name: download-jars
+    image: busybox:latest
+    command:
+      - sh
+      - -c
+      - |
+        wget -P /jars https://jdbc.postgresql.org/download/postgresql-42.7.1.jar
+        wget -P /jars https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.4/hadoop-aws-3.3.4.jar
+        wget -P /jars https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.262/aws-java-sdk-bundle-1.12.262.jar
+    volumeMounts:
+      - name: spark-libs
+        mountPath: /jars
