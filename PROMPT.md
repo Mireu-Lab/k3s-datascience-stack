@@ -30,19 +30,24 @@
 으로 **단일 구성**이 되어있다.
 
 # K3S (containerd) 설계 아키택쳐
+**모든 설치는 Helm를 통해서 설치 하여야합니다.**
 
 1. 데이터를 관리 및 전처리 할수있는 Apache Spark
 2. 정형 데이터인경우 PostgreSQL에 저장
 3. 비 정형 데이터인경우 Apache Hadoop를 가지고 데이터 저장 (예: 이미지, MP3, MP4)
-4. 모든 데이터를 Cold Data목적으로 HDD에 1주일 지나면 자동으로 압축하여 GCP Storage에 Upload
-5. NVIDIA 드라이버가 설치 되어있는 JAX
-6. Google Cloud IAM으로 관리하는 RBAC
-7. 이 모든 형태를 관리하고 각 프로젝트 마다 새로운 네임스페이스를 생성하여 또는 계정을 분활 하여 프로젝트와 분리 관리를 할수있는 jupyter hub
+4. 모든 데이터를 Cold Data목적으로 HDD에 2일 지나면 자동으로 압축하여 백업하여야합니다
+5. 모든 데이터를 Archive Data목적으로 HDD에 1주일 지나면 자동으로 HDD에 압축된 파일을 GCP Storage에 백업 하여야합니다.
+6. NVIDIA 드라이버 + JAX 설치 되어있는 Container (Jupyter Hub로 배포 되어야함.)
+7. Google Cloud IAM으로 관리하는 RBAC
+8. 이 모든 형태를 관리하고 각 프로젝트 마다 새로운 네임스페이스를 생성하여 또는 계정을 분활 하여 프로젝트와 분리 관리를 할수있는 Jupyter Hub
+9. Google OAuth로 관리하는 Jupyter Hub
 
 ## 데이터 관리
 
-1. Hot Data인경우 NVME SSD (SIZE 2TB)에 저장하여야합니다.
-2. Cold Data인경우 NVME SSD에서 HDD로 데이터를 백업 하여야 합니다.
+1. Hot Data인경우 NVME SSD (SIZE 2TB)에 저장하여야합니다. (기간은 최대 2일)
+2. Cold Data인경우 NVME SSD에서 HDD로 데이터를 백업 하여야 합니다. (기간은 최소 2일)
+3. Archive Data인경우 HDD에서 GCP Storage로 데이터를 백업 하여야합니다. (기간은 최소 1주일)
+4. 변동된 사항이 없는지 FILE SUM를 통해서 확인하고 없으면 해당 프로세스를 진행하지 않아야합니다.
 
 ## 네트워크 관리
 
