@@ -43,86 +43,24 @@ hub:
       admin_users:
         - limmireu1214@gmail.com
     GoogleOAuthenticator:
-      # hosted_domain:
-      #   - mireu.xyz
       login_service: "Google"
     KubeSpawner:
       resources:
         limits:
           nvidia.com/gpu: "1"
-  extraConfig:
-    projectForm: |
-      from textwrap import dedent
-
-      def _options_form(spawner):
-          return dedent('''
-          <label for="project_name">Project Name (required):</label>
-          <input name="project_name" class="form-control" placeholder="my-project" required></input>
-          <label for="git_repo">Git Repository URL to clone (optional):</label>
-          <input name="git_repo" class="form-control" placeholder="https://github.com/user/repo.git"></input>
-          ''')
-
-      def _options_from_form(spawner, formdata):
-          opts = {}
-          opts['project_name'] = (formdata.get('project_name') or [''])[0].strip()
-          opts['git_repo'] = (formdata.get('git_repo') or [''])[0].strip()
-          # Export to environment for the singleuser container
-          spawner.environment = spawner.environment or {}
-          if opts['project_name']:
-              spawner.environment['PROJECT_NAME'] = opts['project_name']
-          if opts['git_repo']:
-              spawner.environment['GIT_REPO'] = opts['git_repo']
-          return opts
-
-      c.KubeSpawner.options_form = _options_form
-      c.KubeSpawner.options_from_form = _options_from_form
 
 singleuser:
   image:
-    name: ghcr.io/mireu-lab/jupyter-hadoop-spark
-    tag: "latest"
+    name: ghcr.io/mireu-lab/k3s-datascience-stack
+    tag: main
   storage:
     type: dynamic
     capacity: 20Gi
     dynamic:
       storageClass: "local-path"
-  containerSecurityContext:
-    privileged: true
-    allowPrivilegeEscalation: true
-    capabilities:
-      add:
-        - SYS_ADMIN
-  extraVolumes:
-    - name: dev-fuse
-      hostPath:
-        path: /dev/fuse
-        type: CharDevice
-    - name: hdfs-mount
-      emptyDir: {}
-  extraVolumeMounts:
-    - name: dev-fuse
-      mountPath: /dev/fuse
-    - name: hdfs-mount
-      mountPath: /mnt/data
   extraEnv:
     JUPYTER_ENABLE_LAB: "yes"
     LD_LIBRARY_PATH: "/usr/local/nvidia/lib64"
-  lifecycleHooks:
-    postStart:
-      exec:
-        command:
-          - "sh"
-          - "-c"
-          - >
-            set -e; mkdir -p /home/jovyan/work; \
-            if [ -n "$GIT_REPO" ]; then echo "Cloning $GIT_REPO"; git clone "$GIT_REPO" "/home/jovyan/work/${PROJECT_NAME:-repo}" || true; fi; \
-            mkdir -p /mnt/data; \
-            if command -v hadoop-fuse-dfs >/dev/null 2>&1; then echo "Mounting HDFS..."; nohup hadoop-fuse-dfs ${HDFS_NAMENODE:-hdfs://hdfs-cluster-namenode:8020} /mnt/data -o allow_other -o big_writes >/home/jovyan/.hdfs-fuse.log 2>&1 & sleep 2; fi; \
-            python - <<'PY'\nfrom pyspark.sql import SparkSession\nimport sys\ntry:\n    spark = SparkSession.builder.appName("jhub-selftest").getOrCreate()\n    c = spark.range(1, 101).count()\n    print("Spark self-test count:", c)\n    spark.stop()\nexcept Exception as e:\n    print("Spark self-test failed:", e, file=sys.stderr)\nPY
-    HDFS_NAMENODE: "hdfs://hdfs-cluster-namenode:8020"
-    SPARK_K8S_MASTER: "k8s://https://kubernetes.default.svc"
-    SPARK_DRIVER_SERVICE_ACCOUNT: "jhub-user-sa"
-  serviceAccountName: jhub-user-sa
 
 rbac:
   create: true
