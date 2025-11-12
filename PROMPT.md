@@ -2,7 +2,6 @@
 
 나는 주어진 시스템으로 데이터 분석 용 서버를 구현하고자 한다
 나는 JupyterHub로 로그인 시스템을 단일화 하고, 나머지 부가적인 기능들 Apache Spark, PostgreSQL, Apache Hadoop, Google JAX를 사용할수있는 FrameWork가 필요하다.
-나는 데이터 분석 및 ML/DL/RL 실험용으로 시스템을 구축하고자 하는것이다.
 내가 제시하는 방식을 구현할수있는 파일를 작성하여 출력하시오.
 
 
@@ -29,20 +28,43 @@
 
 으로 **단일 구성**이 되어있다.
 
-# K3S (containerd) 설계 아키택쳐
+# ResearchOpe 설계 아키택쳐
+
 **모든 설치는 Helm를 통해서 설치 하여야합니다.**
+**또한, 공식 이미지, 공식 Helm를 가지고 설치를 진행하여야합니다.**
 
 1. 데이터를 관리 및 전처리 할수있는 Apache Spark
 2. 정형 데이터인경우 PostgreSQL에 저장
 3. 비 정형 데이터인경우 Apache Hadoop를 가지고 데이터 저장 (예: 이미지, MP3, MP4)
-4. 모든 데이터를 Cold Data목적으로 HDD에 2일 지나면 자동으로 압축하여 백업하여야합니다
-5. 모든 데이터를 Archive Data목적으로 HDD에 1주일 지나면 자동으로 HDD에 압축된 파일을 GCP Storage에 백업 하여야합니다.
-6. NVIDIA 드라이버 + JAX 설치 되어있는 Container (Jupyter Hub로 배포 되어야함.)
-7. Google Cloud IAM으로 관리하는 RBAC
-8. 이 모든 형태를 관리하고 각 프로젝트 마다 새로운 네임스페이스를 생성하여 또는 계정을 분활 하여 프로젝트와 분리 관리를 할수있는 Jupyter Hub
-9. Google OAuth로 관리하는 Jupyter Hub
+    0. 데이터 관리
+    1. Hot Data인경우 NVME SSD (SIZE 2TB)에 저장하여야합니다. (기간은 최대 2일)
+    2. Cold Data인경우 NVME SSD에서 HDD로 데이터를 백업 하여야 합니다. (기간은 최소 2일)
+    3. Archive Data인경우 HDD에서 GCP Storage로 데이터를 백업 하여야합니다. (기간은 최소 1주일)
+    4. 변동된 사항이 없는지 FILE SUM를 통해서 확인하고 없으면 해당 프로세스를 진행하지 않아야합니다.
+4. 이 모든 형태를 관리하고 각 프로젝트 마다 새로운 네임스페이스를 생성하여 또는 계정을 분활 하여 프로젝트와 분리 관리를 할수있는 Jupyter Hub
+    1. Google OAuth로 관리하는 Jupyter Hub
+    2. NVIDIA 드라이버 + JAX 설치 되어있는 Container (사용자가 Git Repo URL를 제공하면 Clone하여 배포 하여야함.)
+5. 이들을 관리 모니터링 할수있는 Grafana
+6. Google Cloud IAM으로 관리하는 RBAC
 
-## 데이터 관리
+## 데이터 프레임워크 설치
+
+- Apache Spark
+- PostgreSQL
+- Apache Hadoop
+
+## 연구 스페이스 프레임워크 설치
+
+- NVIDIA 드라이버 + JAX 설치 되어있는 Container
+- Jupyter Hub
+
+## 연구 스페이스 + 데이터 프레임워크 컴퓨팅 리소스 모니터링 설치
+
+- Grafana
+
+위 모니터링 도구말고도 추가적인 괜찮은 방법이 있다면 제안 하시오.
+
+### 데이터 관리
 
 1. Hot Data인경우 NVME SSD (SIZE 2TB)에 저장하여야합니다. (기간은 최대 2일)
 2. Cold Data인경우 NVME SSD에서 HDD로 데이터를 백업 하여야 합니다. (기간은 최소 2일)
