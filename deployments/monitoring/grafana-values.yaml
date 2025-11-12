@@ -1,9 +1,9 @@
 # deployments/monitoring/grafana-values.yaml
 grafana:
-  adminPassword: "prom-operator" # Change this in a production environment
+  adminPassword: "prom-operator"
   ingress:
     enabled: true
-    ingressClassName: nginx
+    ingressClassName: traefik
     annotations:
       cert-manager.io/cluster-issuer: "letsencrypt-production"
     hosts:
@@ -15,7 +15,7 @@ grafana:
   persistence:
     enabled: true
     type: pvc
-    storageClassName: "local-path"
+    storageClassName: "nvme-storage"
     accessModes:
       - ReadWriteOnce
     size: 10Gi
@@ -25,7 +25,7 @@ prometheus:
     storageSpec:
       volumeClaimTemplate:
         spec:
-          storageClassName: "local-path"
+          storageClassName: "nvme-storage"
           accessModes: ["ReadWriteOnce"]
           resources:
             requests:

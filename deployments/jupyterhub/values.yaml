@@ -1,10 +1,7 @@
 # deployments/jupyterhub/values.yaml
 proxy:
-  secretToken: "generate-a-long-random-string" # Replace with a generated secret token
+  secretToken: "generate-a-long-random-string"
   service:
-    type: ClusterIP
-  https-:
-    enabled: true
     type: ClusterIP
 
 ingress:
@@ -12,7 +9,6 @@ ingress:
   hosts:
     - jupyter.mireu.xyz
   annotations:
-    kubernetes.io/ingress.class: "nginx"
     cert-manager.io/cluster-issuer: "letsencrypt-production"
   tls:
    - hosts:
@@ -20,54 +16,97 @@ ingress:
      secretName: jupyterhub-tls
 
 hub:
+  serviceAccount:
+    create: true
+  extraEnv:
+    OAUTH_CLIENT_ID:
+      valueFrom:
+        secretKeyRef:
+          name: google-oauth-secret
+          key: clientId
+    OAUTH_CLIENT_SECRET:
+      valueFrom:
+        secretKeyRef:
+          name: google-oauth-secret
+          key: clientSecret
+    OAUTH_CALLBACK_URL:
+      valueFrom:
+        secretKeyRef:
+          name: google-oauth-secret
+          key: oauthCallbackUrl
   config:
     JupyterHub:
       authenticator_class: google
+      allow_named_servers: true
+      spawner_class: "kubespawner.KubeSpawner"
+    Authenticator:
+      admin_users:
+        - limmireu1214@gmail.com
     GoogleOAuthenticator:
-      # These values are loaded from the secret created in deploy.sh
-      client_id:
-        from_secret:
-          name: google-oauth-secret
-          key: clientId
-      client_secret:
-        from_secret:
-          name: google-oauth-secret
-          key: clientSecret
-      oauth_callback_url:
-        from_secret:
-          name: google-oauth-secret
-          key: oauthCallbackUrl
-      hosted_domain:
-        - mireu.xyz # Optional: Restrict to users in this domain
+      # hosted_domain:
+      #   - mireu.xyz
       login_service: "Google"
-    # Allow spawning of named servers
-    allow_named_servers: true
-    # KubeSpawner overrides for advanced configuration
-    spawner_class: "kubespawner.KubeSpawner"
+    KubeSpawner:
+      resources:
+        limits:
+          nvidia.com/gpu: "1"
+  extraConfig:
+    projectForm: |
+      from textwrap import dedent
+
+      def _options_form(spawner):
+          return dedent('''
+          <label for="project_name">Project Name (required):</label>
+          <input name="project_name" class="form-control" placeholder="my-project" required></input>
+          <label for="git_repo">Git Repository URL to clone (optional):</label>
+          <input name="git_repo" class="form-control" placeholder="https://github.com/user/repo.git"></input>
+          ''')
+
+      def _options_from_form(spawner, formdata):
+          opts = {}
+          opts['project_name'] = (formdata.get('project_name') or [''])[0].strip()
+          opts['git_repo'] = (formdata.get('git_repo') or [''])[0].strip()
+          # Export to environment for the singleuser container
+          spawner.environment = spawner.environment or {}
+          if opts['project_name']:
+              spawner.environment['PROJECT_NAME'] = opts['project_name']
+          if opts['git_repo']:
+              spawner.environment['GIT_REPO'] = opts['git_repo']
+          return opts
+
+      c.KubeSpawner.options_form = _options_form
+      c.KubeSpawner.options_from_form = _options_from_form
 
 singleuser:
-  # Default image with JAX and GPU support.
-  # You should build and push your own image to a container registry.
   image:
-    name: jupyter/tensorflow-notebook # As a base, contains CUDA. Add JAX to it.
+    name: ghcr.io/mireu-lab/jupyter-hadoop-spark
     tag: "latest"
-  # User storage configuration
   storage:
     type: dynamic
     capacity: 20Gi
     dynamic:
-      storageClass: "local-path" # Use a more robust storage class for production
-  # GPU Configuration
-  extraResourceGuarantees:
-    "nvidia.com/gpu": "1"
-  # Mount NVIDIA libraries
-  extraContainerConfig:
-    - name: LD_LIBRARY_PATH
-      value: /usr/local/nvidia/lib64
-  # Allow users to specify their own images
-  imageSelector:
-    enabled: true
-  # Lifecycle hooks for cloning git repos, etc.
+      storageClass: "local-path"
+  containerSecurityContext:
+    privileged: true
+    allowPrivilegeEscalation: true
+    capabilities:
+      add:
+        - SYS_ADMIN
+  extraVolumes:
+    - name: dev-fuse
+      hostPath:
+        path: /dev/fuse
+        type: CharDevice
+    - name: hdfs-mount
+      emptyDir: {}
+  extraVolumeMounts:
+    - name: dev-fuse
+      mountPath: /dev/fuse
+    - name: hdfs-mount
+      mountPath: /mnt/data
+  extraEnv:
+    JUPYTER_ENABLE_LAB: "yes"
+    LD_LIBRARY_PATH: "/usr/local/nvidia/lib64"
   lifecycleHooks:
     postStart:
       exec:
@@ -75,13 +114,15 @@ singleuser:
           - "sh"
           - "-c"
           - >
-            if [ -n "$GIT_REPO" ]; then
-              git clone $GIT_REPO /home/jovyan/work;
-            fi;
-  # Allow users to set environment variables like GIT_REPO
-  extraEnv:
-    JUPYTER_ENABLE_LAB: "yes"
+            set -e; mkdir -p /home/jovyan/work; \
+            if [ -n "$GIT_REPO" ]; then echo "Cloning $GIT_REPO"; git clone "$GIT_REPO" "/home/jovyan/work/${PROJECT_NAME:-repo}" || true; fi; \
+            mkdir -p /mnt/data; \
+            if command -v hadoop-fuse-dfs >/dev/null 2>&1; then echo "Mounting HDFS..."; nohup hadoop-fuse-dfs ${HDFS_NAMENODE:-hdfs://hdfs-cluster-namenode:8020} /mnt/data -o allow_other -o big_writes >/home/jovyan/.hdfs-fuse.log 2>&1 & sleep 2; fi; \
+            python - <<'PY'\nfrom pyspark.sql import SparkSession\nimport sys\ntry:\n    spark = SparkSession.builder.appName("jhub-selftest").getOrCreate()\n    c = spark.range(1, 101).count()\n    print("Spark self-test count:", c)\n    spark.stop()\nexcept Exception as e:\n    print("Spark self-test failed:", e, file=sys.stderr)\nPY
+    HDFS_NAMENODE: "hdfs://hdfs-cluster-namenode:8020"
+    SPARK_K8S_MASTER: "k8s://https://kubernetes.default.svc"
+    SPARK_DRIVER_SERVICE_ACCOUNT: "jhub-user-sa"
+  serviceAccountName: jhub-user-sa
 
-# RBAC
 rbac:
-  enabled: true
+  create: true

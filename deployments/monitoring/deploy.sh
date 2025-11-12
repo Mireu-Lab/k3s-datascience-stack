@@ -13,7 +13,7 @@ kubectl create namespace monitoring
 # Install kube-prometheus-stack
 helm install prometheus prometheus-community/kube-prometheus-stack \
   --namespace monitoring \
-  -f deployments/monitoring/grafana-values.yaml
+  -f grafana-values.yaml
 
 echo "Prometheus and Grafana stack deployment initiated."
 echo "It may take a few minutes for all pods to be ready."
