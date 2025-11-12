@@ -31,6 +31,9 @@ RUN pip install --no-cache-dir pyspark==3.5.1
 # Install JAX with CUDA (adjust as needed)
 RUN pip install --no-cache-dir -U "jax[cuda12_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 
+# Generate a list of installed packages
+RUN pip freeze > /opt/packages.txt
+
 # Startup script for Git clone
 COPY start.sh /usr/local/bin/start.sh
 RUN chmod +x /usr/local/bin/start.sh
