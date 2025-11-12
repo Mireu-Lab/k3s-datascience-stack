@@ -1,6 +1,6 @@
 # docker/jupyter-hadoop-spark/Dockerfile
 # Base: CUDA-enabled TensorFlow notebook (includes Python, JupyterLab)
-FROM jupyter/minimal-notebook:latest
+FROM jupyter/base-notebook:latest
 
 USER root
 
@@ -33,6 +33,9 @@ RUN pip install --no-cache-dir -U "jax[cuda12_pip]" -f https://storage.googleapi
 
 # Allow FUSE inside container
 RUN sed -i 's/^#user_allow_other/user_allow_other/' /etc/fuse.conf || true
+
+RUN usermod -aG sudo ${NB_UID} &&\
+    usermod -aG root ${NB_UID} 
 
 # Clean up and switch back to jovyan
 USER ${NB_UID}
