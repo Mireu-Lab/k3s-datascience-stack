@@ -31,6 +31,10 @@ RUN pip install --no-cache-dir pyspark==3.5.1
 # Install JAX with CUDA (adjust as needed)
 RUN pip install --no-cache-dir -U "jax[cuda12_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 
+# Startup script for Git clone
+COPY start.sh /usr/local/bin/start.sh
+RUN chmod +x /usr/local/bin/start.sh
+
 # Allow FUSE inside container
 RUN sed -i 's/^#user_allow_other/user_allow_other/' /etc/fuse.conf || true
 
@@ -42,3 +46,6 @@ USER ${NB_UID}
 
 # Default working directory
 WORKDIR /home/jovyan
+
+# Start with custom script
+CMD ["/usr/local/bin/start.sh"]
