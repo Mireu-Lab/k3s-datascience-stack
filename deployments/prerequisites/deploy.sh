@@ -27,6 +27,24 @@ echo "Waiting for cert-manager to be ready..."
 kubectl wait --for=condition=Available=True deployment/cert-manager-webhook -n cert-manager --timeout=300s
 
 echo "Cert-manager is ready. Applying ClusterIssuer..."
+
+# Create Cloudflare API token secret (expects CLOUDFLARE_API_TOKEN env var)
+if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+  echo "WARNING: CLOUDFLARE_API_TOKEN is not set. Set it to enable DNS-01 validation for wildcard certs." >&2
+  echo "Export it and re-run to create the secret automatically, or create the secret manually:" >&2
+  echo "kubectl -n cert-manager create secret generic cloudflare-api-token-secret --from-literal=api-token=YOUR_TOKEN" >&2
+else
+  kubectl -n cert-manager create secret generic cloudflare-api-token-secret \
+    --from-literal=api-token="$CLOUDFLARE_API_TOKEN" \
+    --dry-run=client -o yaml | kubectl apply -f -
+  echo "Cloudflare API token secret applied in cert-manager namespace."
+fi
+
 kubectl apply -f deployments/prerequisites/letsencrypt-issuer.yaml
+
+echo "Applying wildcard certificate and Traefik TLSStore (default certificate)..."
+kubectl apply -f deployments/prerequisites/wildcard-certificate.yaml
+kubectl apply -f deployments/prerequisites/traefik-default-tlsstore.yaml
+kubectl apply -f deployments/prerequisites/traefik-https-redirect.yaml
 
 echo "Prerequisites deployment complete."

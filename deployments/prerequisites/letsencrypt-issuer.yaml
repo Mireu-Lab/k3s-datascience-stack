@@ -10,6 +10,10 @@ spec:
     privateKeySecretRef:
       name: letsencrypt-production-private-key
     solvers:
-    - http01:
-        ingress:
-          class: nginx # Make sure this matches your Ingress controller
+    - dns01:
+        cloudflare:
+          # Expects a secret named 'cloudflare-api-token-secret' in the cert-manager namespace
+          # containing key 'api-token' with a Cloudflare API Token that has DNS edit permissions
+          apiTokenSecretRef:
+            name: cloudflare-api-token-secret
+            key: api-token
