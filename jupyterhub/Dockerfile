@@ -193,20 +193,15 @@ RUN mkdir -p /home/jovyan/workspace && \
     mkdir -p /mnt/gcs && \
     chown -R $NB_USER:$NB_GID /home/jovyan /mnt/hdfs /mnt/nvme /mnt/hdd /mnt/gcs
 
-# Install additional Python packages for data science
+# Install commonly used visualization packages (lightweight)
 RUN pip3 install --no-cache-dir \
     plotly>=5.17.0 \
-    bokeh>=3.3.0 \
-    altair>=5.1.0 \
-    streamlit>=1.28.0 \
-    dask>=2023.10.0 \
-    xgboost>=2.0.0 \
-    lightgbm>=4.1.0 \
-    tensorflow>=2.14.0 \
-    torch>=2.1.0 \
-    torchvision>=0.16.0 \
-    transformers>=4.35.0 \
-    datasets>=2.14.0
+    ipympl>=0.9.0
+
+# Note: Heavy ML/DL packages (TensorFlow, PyTorch, etc.) should be installed 
+# by users in their notebooks as needed using:
+# !pip install --user <package-name>
+# This keeps the base image lightweight and allows users to choose their versions.
 
 # Create startup script for environment setup
 RUN cat > /home/jovyan/.jupyter_startup.py <<'EOF'
