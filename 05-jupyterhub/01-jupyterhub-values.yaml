@@ -1,0 +1,177 @@
+proxy:
+  secretToken: "GENERATE_WITH_openssl_rand_hex_32"
+  service:
+    type: ClusterIP
+
+hub:
+  config:
+    JupyterHub:
+      authenticator_class: generic-oauth
+    GenericOAuthenticator:
+      client_id: "YOUR_GOOGLE_CLIENT_ID"
+      client_secret: "YOUR_GOOGLE_CLIENT_SECRET"
+      oauth_callback_url: "https://jupyter.mireu.xyz/hub/oauth_callback"
+      authorize_url: "https://accounts.google.com/o/oauth2/v2/auth"
+      token_url: "https://oauth2.googleapis.com/token"
+      userdata_url: "https://www.googleapis.com/oauth2/v1/userinfo"
+      scope:
+        - "openid"
+        - "email"
+        - "profile"
+      username_claim: "email"
+  
+  extraConfig:
+    00-custom-spawner: |
+      from kubespawner import KubeSpawner
+      import os
+      
+      class CustomKubeSpawner(KubeSpawner):
+          async def start(self):
+              # Git Repo URL 처리
+              git_repo = self.user_options.get('git_repo', '')
+              if git_repo:
+                  repo_name = git_repo.split('/')[-1].replace('.git', '')
+                  self.environment['GIT_REPO'] = git_repo
+                  self.environment['WORKSPACE_NAME'] = f"{self.user.name}-{repo_name}"
+              
+              return await super().start()
+      
+      c.JupyterHub.spawner_class = CustomKubeSpawner
+    
+    01-profile-list: |
+      c.KubeSpawner.profile_list = [
+        {
+          'display_name': 'NVIDIA GPU + JAX Environment',
+          'description': 'NVIDIA GPU with JAX pre-installed',
+          'kubespawner_override': {
+            'image': 'jupyter/tensorflow-notebook:latest',
+            'cpu_limit': 8,
+            'cpu_guarantee': 4,
+            'mem_limit': '32G',
+            'mem_guarantee': '16G',
+            'extra_resource_limits': {
+              'nvidia.com/gpu': '1'
+            },
+            'extra_resource_guarantees': {
+              'nvidia.com/gpu': '1'
+            }
+          }
+        }
+      ]
+
+  extraEnv:
+    JUPYTER_ENABLE_LAB: "yes"
+  
+  resources:
+    limits:
+      memory: 2Gi
+      cpu: 1000m
+    requests:
+      memory: 1Gi
+      cpu: 500m
+
+singleuser:
+  image:
+    name: jupyter/tensorflow-notebook
+    tag: latest
+  
+  defaultUrl: "/lab"
+  
+  extraEnv:
+    JUPYTER_ENABLE_LAB: "yes"
+    GRANT_SUDO: "yes"
+    CHOWN_HOME: "yes"
+    SPARK_MASTER: "spark://spark-master-svc.spark.svc.cluster.local:7077"
+    HADOOP_CONF_DIR: "/opt/hadoop/conf"
+  
+  storage:
+    dynamic:
+      storageClass: nvme-storage
+    capacity: 50Gi
+    homeMountPath: /home/jovyan
+  
+  extraVolumes:
+    - name: hadoop-config
+      configMap:
+        name: jupyter-hadoop-config
+    - name: nvme-storage
+      hostPath:
+        path: /mnt/nvme
+        type: DirectoryOrCreate
+    - name: hdd-storage
+      hostPath:
+        path: /mnt/hdd
+        type: DirectoryOrCreate
+    - name: gcs-storage
+      hostPath:
+        path: /mnt/gcs
+        type: DirectoryOrCreate
+  
+  extraVolumeMounts:
+    - name: hadoop-config
+      mountPath: /opt/hadoop/conf
+    - name: nvme-storage
+      mountPath: /mnt/nvme
+    - name: hdd-storage
+      mountPath: /mnt/hdd
+    - name: gcs-storage
+      mountPath: /mnt/gcs
+  
+  lifecycleHooks:
+    postStart:
+      exec:
+        command:
+          - "sh"
+          - "-c"
+          - |
+            # Install NVIDIA drivers and JAX
+            pip install --upgrade jax jaxlib
+            pip install pyspark psycopg2-binary hdfs
+            
+            # Clone Git repository if provided
+            if [ -n "$GIT_REPO" ]; then
+              cd /home/jovyan
+              git clone $GIT_REPO $WORKSPACE_NAME
+              cd $WORKSPACE_NAME
+            fi
+  
+  cpu:
+    limit: 8
+    guarantee: 4
+  memory:
+    limit: 32G
+    guarantee: 16G
+  
+  extraResource:
+    limits:
+      nvidia.com/gpu: "1"
+    guarantees:
+      nvidia.com/gpu: "1"
+
+ingress:
+  enabled: true
+  ingressClassName: traefik
+  hosts:
+    - jupyter.mireu.xyz
+  tls:
+    - hosts:
+        - jupyter.mireu.xyz
+      secretName: mireu-xyz-tls
+
+scheduling:
+  userScheduler:
+    enabled: false
+  
+  podPriority:
+    enabled: false
+
+prePuller:
+  hook:
+    enabled: false
+  continuous:
+    enabled: false
+
+cull:
+  enabled: true
+  timeout: 3600
+  every: 600
