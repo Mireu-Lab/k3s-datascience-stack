@@ -1,0 +1,10 @@
+---
+# ZooKeeper ZNode for HDFS
+apiVersion: zookeeper.stackable.tech/v1alpha1
+kind: ZookeeperZnode
+metadata:
+  name: hdfs-znode
+  namespace: default
+spec:
+  clusterRef:
+    name: hdfs-zk
