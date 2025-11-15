@@ -1,0 +1,288 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keycloak-realm-config
+  namespace: keycloak
+data:
+  researchops-realm.json: |
+    {
+      "realm": "researchops",
+      "enabled": true,
+      "displayName": "ResearchOps Platform",
+      "displayNameHtml": "<b>ResearchOps</b> Platform",
+      "sslRequired": "external",
+      "registrationAllowed": false,
+      "loginWithEmailAllowed": true,
+      "duplicateEmailsAllowed": false,
+      "resetPasswordAllowed": true,
+      "editUsernameAllowed": false,
+      "bruteForceProtected": true,
+      "permanentLockout": false,
+      "maxFailureWaitSeconds": 900,
+      "minimumQuickLoginWaitSeconds": 60,
+      "waitIncrementSeconds": 60,
+      "quickLoginCheckMilliSeconds": 1000,
+      "maxDeltaTimeSeconds": 43200,
+      "failureFactor": 5,
+      "defaultSignatureAlgorithm": "RS256",
+      "accessTokenLifespan": 3600,
+      "accessTokenLifespanForImplicitFlow": 900,
+      "ssoSessionIdleTimeout": 7200,
+      "ssoSessionMaxLifespan": 36000,
+      "offlineSessionIdleTimeout": 2592000,
+      "accessCodeLifespan": 60,
+      "accessCodeLifespanUserAction": 300,
+      "accessCodeLifespanLogin": 1800,
+      "identityProviders": [
+        {
+          "alias": "google",
+          "displayName": "Google",
+          "providerId": "google",
+          "enabled": true,
+          "trustEmail": true,
+          "storeToken": true,
+          "addReadTokenRoleOnCreate": true,
+          "config": {
+            "clientId": "${GOOGLE_CLIENT_ID}",
+            "clientSecret": "${GOOGLE_CLIENT_SECRET}",
+            "defaultScope": "openid profile email",
+            "syncMode": "IMPORT",
+            "useJwksUrl": "true",
+            "hostedDomain": ""
+          }
+        }
+      ],
+      "roles": {
+        "realm": [
+          {
+            "name": "master_account",
+            "description": "Master account for Jupyter and Grafana",
+            "composite": false
+          },
+          {
+            "name": "project_admin",
+            "description": "Project administrator role",
+            "composite": false
+          },
+          {
+            "name": "data_analyst",
+            "description": "Data analyst with Spark access",
+            "composite": false
+          },
+          {
+            "name": "data_scientist",
+            "description": "Data scientist with full stack access",
+            "composite": false
+          }
+        ]
+      },
+      "clients": [
+        {
+          "clientId": "jupyterhub",
+          "name": "JupyterHub",
+          "description": "JupyterHub OAuth Client",
+          "enabled": true,
+          "clientAuthenticatorType": "client-secret",
+          "secret": "${JUPYTERHUB_CLIENT_SECRET}",
+          "redirectUris": [
+            "https://jupyter.mireu.xyz/*",
+            "https://jupyter.mireu.xyz/hub/oauth_callback"
+          ],
+          "webOrigins": [
+            "https://jupyter.mireu.xyz"
+          ],
+          "protocol": "openid-connect",
+          "publicClient": false,
+          "standardFlowEnabled": true,
+          "implicitFlowEnabled": false,
+          "directAccessGrantsEnabled": true,
+          "serviceAccountsEnabled": true,
+          "authorizationServicesEnabled": true,
+          "fullScopeAllowed": true,
+          "attributes": {
+            "access.token.lifespan": "3600",
+            "saml.assertion.signature": "false",
+            "saml.authnstatement": "false",
+            "saml.client.signature": "false",
+            "saml.encrypt": "false",
+            "saml.force.post.binding": "false",
+            "saml.multivalued.roles": "false",
+            "saml.onetimeuse.condition": "false",
+            "saml.server.signature": "false",
+            "saml.server.signature.keyinfo.ext": "false",
+            "use.refresh.tokens": "true"
+          }
+        },
+        {
+          "clientId": "grafana",
+          "name": "Grafana",
+          "description": "Grafana OAuth Client",
+          "enabled": true,
+          "clientAuthenticatorType": "client-secret",
+          "secret": "${GRAFANA_CLIENT_SECRET}",
+          "redirectUris": [
+            "https://grafana.mireu.xyz/*",
+            "https://grafana.mireu.xyz/login/generic_oauth"
+          ],
+          "webOrigins": [
+            "https://grafana.mireu.xyz"
+          ],
+          "protocol": "openid-connect",
+          "publicClient": false,
+          "standardFlowEnabled": true,
+          "implicitFlowEnabled": false,
+          "directAccessGrantsEnabled": true,
+          "serviceAccountsEnabled": true,
+          "fullScopeAllowed": true
+        },
+        {
+          "clientId": "spark",
+          "name": "Apache Spark",
+          "description": "Spark Service Client",
+          "enabled": true,
+          "clientAuthenticatorType": "client-secret",
+          "secret": "${SPARK_CLIENT_SECRET}",
+          "protocol": "openid-connect",
+          "publicClient": false,
+          "serviceAccountsEnabled": true,
+          "authorizationServicesEnabled": true,
+          "attributes": {
+            "access.token.lifespan": "7200"
+          }
+        },
+        {
+          "clientId": "hdfs",
+          "name": "Hadoop HDFS",
+          "description": "HDFS Service Client",
+          "enabled": true,
+          "clientAuthenticatorType": "client-secret",
+          "secret": "${HDFS_CLIENT_SECRET}",
+          "protocol": "openid-connect",
+          "publicClient": false,
+          "serviceAccountsEnabled": true,
+          "authorizationServicesEnabled": true,
+          "attributes": {
+            "access.token.lifespan": "7200"
+          }
+        },
+        {
+          "clientId": "postgresql",
+          "name": "PostgreSQL",
+          "description": "PostgreSQL Service Client",
+          "enabled": true,
+          "clientAuthenticatorType": "client-secret",
+          "secret": "${POSTGRESQL_CLIENT_SECRET}",
+          "protocol": "openid-connect",
+          "publicClient": false,
+          "serviceAccountsEnabled": true,
+          "authorizationServicesEnabled": true,
+          "attributes": {
+            "access.token.lifespan": "7200"
+          }
+        }
+      ],
+      "clientScopes": [
+        {
+          "name": "project_access",
+          "description": "Project-based access control",
+          "protocol": "openid-connect",
+          "attributes": {
+            "include.in.token.scope": "true",
+            "display.on.consent.screen": "true"
+          },
+          "protocolMappers": [
+            {
+              "name": "project-mapper",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-usermodel-attribute-mapper",
+              "consentRequired": false,
+              "config": {
+                "userinfo.token.claim": "true",
+                "user.attribute": "project",
+                "id.token.claim": "true",
+                "access.token.claim": "true",
+                "claim.name": "project",
+                "jsonType.label": "String"
+              }
+            }
+          ]
+        },
+        {
+          "name": "resource_access",
+          "description": "Resource access tokens for Spark, HDFS, PostgreSQL",
+          "protocol": "openid-connect",
+          "attributes": {
+            "include.in.token.scope": "true",
+            "display.on.consent.screen": "true"
+          },
+          "protocolMappers": [
+            {
+              "name": "spark-access",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-audience-mapper",
+              "consentRequired": false,
+              "config": {
+                "included.client.audience": "spark",
+                "id.token.claim": "false",
+                "access.token.claim": "true"
+              }
+            },
+            {
+              "name": "hdfs-access",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-audience-mapper",
+              "consentRequired": false,
+              "config": {
+                "included.client.audience": "hdfs",
+                "id.token.claim": "false",
+                "access.token.claim": "true"
+              }
+            },
+            {
+              "name": "postgresql-access",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-audience-mapper",
+              "consentRequired": false,
+              "config": {
+                "included.client.audience": "postgresql",
+                "id.token.claim": "false",
+                "access.token.claim": "true"
+              }
+            }
+          ]
+        }
+      ],
+      "groups": [
+        {
+          "name": "master_accounts",
+          "path": "/master_accounts",
+          "attributes": {},
+          "realmRoles": ["master_account"]
+        },
+        {
+          "name": "project_admins",
+          "path": "/project_admins",
+          "attributes": {},
+          "realmRoles": ["project_admin"]
+        },
+        {
+          "name": "data_analysts",
+          "path": "/data_analysts",
+          "attributes": {},
+          "realmRoles": ["data_analyst"]
+        },
+        {
+          "name": "data_scientists",
+          "path": "/data_scientists",
+          "attributes": {},
+          "realmRoles": ["data_scientist"]
+        }
+      ],
+      "defaultGroups": ["/data_analysts"],
+      "attributes": {
+        "frontendUrl": "https://keycloak.mireu.xyz",
+        "adminUrl": "https://keycloak.mireu.xyz",
+        "issuer": "https://keycloak.mireu.xyz/realms/researchops"
+      }
+    }

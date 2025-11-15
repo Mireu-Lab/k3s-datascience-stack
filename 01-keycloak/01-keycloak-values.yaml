@@ -1,0 +1,78 @@
+global:
+  storageClass: "nvme-storage"
+  security:
+    allowInsecureImages: true
+
+image:
+  registry: docker.io
+  repository: bitnamisecure/keycloak
+  tag: "latest"
+
+auth:
+  adminUser: admin
+  adminPassword: "ChangeMe123!"
+
+postgresql:
+  enabled: true
+  auth:
+    postgresPassword: "keycloak123"
+    username: keycloak
+    password: "keycloak123"
+    database: keycloak
+  primary:
+    persistence:
+      enabled: true
+      storageClass: "nvme-storage"
+      size: 50Gi
+
+service:
+  type: ClusterIP
+  ports:
+    http: 8080
+
+ingress:
+  enabled: true
+  ingressClassName: traefik
+  hostname: keycloak.mireu.xyz
+  tls: true
+  extraTls:
+    - hosts:
+        - keycloak.mireu.xyz
+      secretName: mireu-xyz-tls
+
+extraEnvVars:
+  - name: KC_HOSTNAME
+    value: "keycloak.mireu.xyz"
+  - name: KC_HOSTNAME_STRICT
+    value: "false"
+  - name: KC_PROXY
+    value: "edge"
+  - name: KC_HTTP_ENABLED
+    value: "true"
+  - name: KEYCLOAK_PRODUCTION
+    value: "true"
+  - name: KEYCLOAK_EXTRA_ARGS
+    value: "--spi-login-protocol-openid-connect-legacy-logout-redirect-uri=true"
+
+# Google OAuth 설정 (Keycloak Admin Console에서 수동 설정 필요)
+# Identity Providers > Google > Client ID 및 Secret 입력
+
+replicaCount: 1
+
+resources:
+  limits:
+    memory: 2Gi
+    cpu: 1000m
+  requests:
+    memory: 1Gi
+    cpu: 500m
+
+livenessProbe:
+  enabled: true
+  initialDelaySeconds: 300
+  periodSeconds: 10
+
+readinessProbe:
+  enabled: true
+  initialDelaySeconds: 30
+  periodSeconds: 10
