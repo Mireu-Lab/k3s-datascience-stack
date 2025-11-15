@@ -1,0 +1,70 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: researchops
+  labels:
+    name: researchops
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: keycloak
+  labels:
+    name: keycloak
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hadoop
+  labels:
+    name: hadoop
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: spark
+  labels:
+    name: spark
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: postgresql
+  labels:
+    name: postgresql
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: jupyterhub
+  labels:
+    name: jupyterhub
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    name: monitoring
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: traefik
+  labels:
+    name: traefik
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: argocd
+  labels:
+    name: argocd
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: keycloak
+  labels:
+    name: keycloak
