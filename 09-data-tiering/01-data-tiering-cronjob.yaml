@@ -1,0 +1,207 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: data-tiering-script
+  namespace: hadoop
+data:
+  hot-to-cold.sh: |
+    #!/bin/bash
+    # Hot (NVME) -> Cold (HDD) 데이터 티어링
+    
+    HOT_DIR="/mnt/nvme/hadoop"
+    COLD_DIR="/mnt/hdd/hadoop"
+    LOG_FILE="/var/log/data-tiering-hot-cold.log"
+    CHECKSUM_DIR="/mnt/nvme/checksums"
+    
+    echo "[$(date)] Hot -> Cold 티어링 시작" | tee -a $LOG_FILE
+    
+    # 체크섬 디렉토리 생성
+    mkdir -p $CHECKSUM_DIR
+    
+    # 2일 이상 된 파일 찾기
+    find $HOT_DIR -type f -mtime +2 | while read file; do
+      echo "[$(date)] 처리 중: $file" | tee -a $LOG_FILE
+      
+      # 파일 체크섬 계산
+      CHECKSUM_BEFORE=$(sha256sum "$file" | awk '{print $1}')
+      CHECKSUM_FILE="${CHECKSUM_DIR}/$(basename $file).sha256"
+      
+      # 기존 체크섬과 비교
+      if [ -f "$CHECKSUM_FILE" ]; then
+        CHECKSUM_STORED=$(cat "$CHECKSUM_FILE")
+        if [ "$CHECKSUM_BEFORE" == "$CHECKSUM_STORED" ]; then
+          echo "[$(date)] 파일 변경 없음, 이동 스킵: $file" | tee -a $LOG_FILE
+          continue
+        fi
+      fi
+      
+      # 상대 경로 계산
+      REL_PATH=${file#$HOT_DIR/}
+      DEST_FILE="$COLD_DIR/$REL_PATH"
+      DEST_DIR=$(dirname "$DEST_FILE")
+      
+      # 대상 디렉토리 생성
+      mkdir -p "$DEST_DIR"
+      
+      # 파일 복사
+      cp -p "$file" "$DEST_FILE"
+      
+      # 복사 후 체크섬 확인
+      CHECKSUM_AFTER=$(sha256sum "$DEST_FILE" | awk '{print $1}')
+      
+      if [ "$CHECKSUM_BEFORE" == "$CHECKSUM_AFTER" ]; then
+        echo "[$(date)] 체크섬 일치, 원본 삭제: $file" | tee -a $LOG_FILE
+        rm -f "$file"
+        echo "$CHECKSUM_AFTER" > "$CHECKSUM_FILE"
+      else
+        echo "[$(date)] 체크섬 불일치, 원본 유지: $file" | tee -a $LOG_FILE
+        rm -f "$DEST_FILE"
+      fi
+    done
+    
+    echo "[$(date)] Hot -> Cold 티어링 완료" | tee -a $LOG_FILE
+
+  cold-to-archive.sh: |
+    #!/bin/bash
+    # Cold (HDD) -> Archive (GCS) 데이터 티어링
+    
+    COLD_DIR="/mnt/hdd/hadoop"
+    ARCHIVE_DIR="/mnt/gcs/hadoop-archive"
+    LOG_FILE="/var/log/data-tiering-cold-archive.log"
+    CHECKSUM_DIR="/mnt/hdd/checksums"
+    
+    echo "[$(date)] Cold -> Archive 티어링 시작" | tee -a $LOG_FILE
+    
+    # 아카이브 디렉토리 생성
+    mkdir -p $ARCHIVE_DIR
+    mkdir -p $CHECKSUM_DIR
+    
+    # 7일 이상 된 파일 찾기
+    find $COLD_DIR -type d -mtime +7 | while read dir; do
+      # 빈 디렉토리 스킵
+      if [ -z "$(ls -A $dir)" ]; then
+        continue
+      fi
+      
+      echo "[$(date)] 아카이빙 중: $dir" | tee -a $LOG_FILE
+      
+      # 디렉토리명 추출
+      DIR_NAME=$(basename $dir)
+      TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+      ARCHIVE_NAME="${DIR_NAME}-${TIMESTAMP}.tar.xz"
+      ARCHIVE_PATH="${ARCHIVE_DIR}/${ARCHIVE_NAME}"
+      
+      # tar.xz로 압축
+      tar -cJf "$ARCHIVE_PATH" -C "$(dirname $dir)" "$(basename $dir)"
+      
+      if [ $? -eq 0 ]; then
+        # 압축 파일 체크섬
+        CHECKSUM=$(sha256sum "$ARCHIVE_PATH" | awk '{print $1}')
+        CHECKSUM_FILE="${CHECKSUM_DIR}/${ARCHIVE_NAME}.sha256"
+        echo "$CHECKSUM" > "$CHECKSUM_FILE"
+        
+        # 원본 디렉토리 삭제
+        rm -rf "$dir"
+        echo "[$(date)] 아카이빙 완료 및 원본 삭제: $dir -> $ARCHIVE_PATH" | tee -a $LOG_FILE
+      else
+        echo "[$(date)] 아카이빙 실패: $dir" | tee -a $LOG_FILE
+        rm -f "$ARCHIVE_PATH"
+      fi
+    done
+    
+    echo "[$(date)] Cold -> Archive 티어링 완료" | tee -a $LOG_FILE
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: data-tiering-hot-to-cold
+  namespace: hadoop
+spec:
+  schedule: "0 2 * * *"  # 매일 오전 2시
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 7
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: hot-to-cold
+            image: bash:latest
+            command: ["/bin/bash", "/scripts/hot-to-cold.sh"]
+            volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+            - name: nvme-storage
+              mountPath: /mnt/nvme
+            - name: hdd-storage
+              mountPath: /mnt/hdd
+            resources:
+              limits:
+                memory: 1Gi
+                cpu: 1000m
+              requests:
+                memory: 512Mi
+                cpu: 500m
+          volumes:
+          - name: scripts
+            configMap:
+              name: data-tiering-script
+              defaultMode: 0755
+          - name: nvme-storage
+            hostPath:
+              path: /mnt/nvme
+              type: DirectoryOrCreate
+          - name: hdd-storage
+            hostPath:
+              path: /mnt/hdd
+              type: DirectoryOrCreate
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: data-tiering-cold-to-archive
+  namespace: hadoop
+spec:
+  schedule: "0 4 * * *"  # 매일 오전 4시
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 7
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: cold-to-archive
+            image: bash:latest
+            command: ["/bin/bash", "/scripts/cold-to-archive.sh"]
+            volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+            - name: hdd-storage
+              mountPath: /mnt/hdd
+            - name: gcs-storage
+              mountPath: /mnt/gcs
+            resources:
+              limits:
+                memory: 2Gi
+                cpu: 2000m
+              requests:
+                memory: 1Gi
+                cpu: 1000m
+          volumes:
+          - name: scripts
+            configMap:
+              name: data-tiering-script
+              defaultMode: 0755
+          - name: hdd-storage
+            hostPath:
+              path: /mnt/hdd
+              type: DirectoryOrCreate
+          - name: gcs-storage
+            hostPath:
+              path: /mnt/gcs
+              type: DirectoryOrCreate
