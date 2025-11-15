@@ -1,0 +1,111 @@
+global:
+  storageClass: "nvme-storage"
+
+master:
+  replicaCount: 1
+  resources:
+    limits:
+      memory: 16Gi
+      cpu: 4000m
+    requests:
+      memory: 8Gi
+      cpu: 2000m
+  extraEnvVars:
+    - name: SPARK_MODE
+      value: "master"
+    - name: SPARK_MASTER_WEBUI_PORT
+      value: "8080"
+    - name: HADOOP_CONF_DIR
+      value: "/opt/hadoop/conf"
+  extraVolumes:
+    - name: hadoop-config
+      configMap:
+        name: spark-hadoop-config
+    - name: nvme-storage
+      hostPath:
+        path: /mnt/nvme
+        type: DirectoryOrCreate
+    - name: hdd-storage
+      hostPath:
+        path: /mnt/hdd
+        type: DirectoryOrCreate
+    - name: gcs-storage
+      hostPath:
+        path: /mnt/gcs
+        type: DirectoryOrCreate
+  extraVolumeMounts:
+    - name: hadoop-config
+      mountPath: /opt/hadoop/conf
+    - name: nvme-storage
+      mountPath: /mnt/nvme
+    - name: hdd-storage
+      mountPath: /mnt/hdd
+    - name: gcs-storage
+      mountPath: /mnt/gcs
+
+worker:
+  replicaCount: 1
+  resources:
+    limits:
+      memory: 32Gi
+      cpu: 8000m
+    requests:
+      memory: 16Gi
+      cpu: 4000m
+  extraEnvVars:
+    - name: SPARK_MODE
+      value: "worker"
+    - name: SPARK_WORKER_MEMORY
+      value: "28G"
+    - name: SPARK_WORKER_CORES
+      value: "8"
+    - name: HADOOP_CONF_DIR
+      value: "/opt/hadoop/conf"
+  extraVolumes:
+    - name: hadoop-config
+      configMap:
+        name: spark-hadoop-config
+    - name: nvme-storage
+      hostPath:
+        path: /mnt/nvme
+        type: DirectoryOrCreate
+    - name: hdd-storage
+      hostPath:
+        path: /mnt/hdd
+        type: DirectoryOrCreate
+    - name: gcs-storage
+      hostPath:
+        path: /mnt/gcs
+        type: DirectoryOrCreate
+  extraVolumeMounts:
+    - name: hadoop-config
+      mountPath: /opt/hadoop/conf
+    - name: nvme-storage
+      mountPath: /mnt/nvme
+    - name: hdd-storage
+      mountPath: /mnt/hdd
+    - name: gcs-storage
+      mountPath: /mnt/gcs
+
+service:
+  type: ClusterIP
+  ports:
+    http: 8080
+
+ingress:
+  enabled: true
+  ingressClassName: traefik
+  hostname: spark.mireu.xyz
+  tls: true
+  extraTls:
+    - hosts:
+        - spark.mireu.xyz
+      secretName: mireu-xyz-tls
+
+metrics:
+  enabled: true
+
+# PostgreSQL 연결 설정
+extraEnvVars:
+  - name: SPARK_CLASSPATH
+    value: "/opt/spark/jars/postgresql-42.7.1.jar:/opt/spark/jars/hadoop-aws-3.3.4.jar"
