@@ -1,0 +1,41 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Pooler
+metadata:
+  name: postgres-pooler
+  namespace: default
+spec:
+  cluster:
+    name: postgres-cluster
+  
+  instances: 3
+  type: rw
+  
+  pgbouncer:
+    poolMode: transaction
+    parameters:
+      max_client_conn: "1000"
+      default_pool_size: "25"
+      max_db_connections: "100"
+      max_user_connections: "100"
+      reserve_pool_size: "5"
+      reserve_pool_timeout: "5"
+      log_connections: "1"
+      log_disconnections: "1"
+      log_pooler_errors: "1"
+  
+  monitoring:
+    enablePodMonitor: true
+  
+  template:
+    metadata:
+      labels:
+        app: postgres-pooler
+    spec:
+      containers: []
+      resources:
+        requests:
+          cpu: "500m"
+          memory: "512Mi"
+        limits:
+          cpu: "1"
+          memory: "1Gi"

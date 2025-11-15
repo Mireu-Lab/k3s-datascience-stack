@@ -1,0 +1,67 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: postgres-cluster
+  namespace: default
+spec:
+  instances: 1  # 단일 노드 구성
+  
+  # PostgreSQL configuration - optimized for HP Z440
+  postgresql:
+    parameters:
+      max_connections: "300"
+      shared_buffers: "8GB"  # 96GB RAM의 약 8%
+      effective_cache_size: "24GB"  # 96GB RAM의 약 25%
+      maintenance_work_mem: "2GB"
+      checkpoint_completion_target: "0.9"
+      wal_buffers: "16MB"
+      default_statistics_target: "100"
+      random_page_cost: "1.1"  # NVME SSD 최적화
+      effective_io_concurrency: "200"
+      work_mem: "32MB"
+      min_wal_size: "2GB"
+      max_wal_size: "8GB"
+      max_worker_processes: "10"
+      max_parallel_workers_per_gather: "4"
+      max_parallel_workers: "10"
+  
+  # Storage configuration - NVME SSD for structured data
+  storage:
+    size: 500Gi
+    storageClass: local-path
+  
+  # Bootstrap configuration
+  bootstrap:
+    initdb:
+      database: researchops
+      owner: researchops
+      encoding: UTF8
+      localeCollate: en_US.UTF-8
+      localeCType: en_US.UTF-8
+      options:
+        - "--data-checksums"
+  
+  # Monitoring
+  monitoring:
+    enablePodMonitor: true
+  
+  # Resources - optimized for single node
+  resources:
+    requests:
+      memory: "16Gi"
+      cpu: "4"
+    limits:
+      memory: "32Gi"
+      cpu: "8"
+  
+  # NodeSelector for HP Z440
+  nodeSelector:
+    kubernetes.io/hostname: "hp-z440"
+  
+  # Backup to HDD
+  backup:
+    barmanObjectStore:
+      destinationPath: "file:///mnt/hdd/postgres-backup"
+      wal:
+        compression: gzip
+    retentionPolicy: "30d"
