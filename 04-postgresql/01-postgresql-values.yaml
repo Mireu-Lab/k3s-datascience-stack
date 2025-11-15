@@ -1,0 +1,74 @@
+global:
+  storageClass: "nvme-storage"
+  postgresql:
+    auth:
+      postgresPassword: "PostgresAdmin123!"
+      username: "pgadmin"
+      password: "PgAdmin123!"
+      database: "postgres"
+
+image:
+  registry: docker.io
+  repository: bitnami/postgresql
+  tag: latest
+
+architecture: standalone
+
+auth:
+  enablePostgresUser: true
+  postgresPassword: "PostgresAdmin123!"
+  username: "pgadmin"
+  password: "PgAdmin123!"
+  database: "postgres"
+
+primary:
+  persistence:
+    enabled: true
+    storageClass: "nvme-storage"
+    size: 500Gi
+  
+  podSecurityContext:
+    enabled: true
+    fsGroup: 1001
+  
+  containerSecurityContext:
+    enabled: true
+    runAsUser: 1001
+    runAsNonRoot: true
+  
+  resources:
+    limits:
+      memory: 16Gi
+      cpu: 4000m
+    requests:
+      memory: 8Gi
+      cpu: 2000m
+  
+  extraEnvVars:
+    - name: POSTGRESQL_MAX_CONNECTIONS
+      value: "200"
+    - name: POSTGRESQL_SHARED_BUFFERS
+      value: "4GB"
+    - name: POSTGRESQL_EFFECTIVE_CACHE_SIZE
+      value: "12GB"
+  
+  initdb:
+    scripts:
+      init-databases.sql: |
+        -- 프로젝트별 데이터베이스 생성 예시
+        CREATE DATABASE project_template;
+        
+        -- 프로젝트 사용자 생성 예시
+        CREATE USER project_user WITH PASSWORD 'ProjectPass123!';
+        GRANT ALL PRIVILEGES ON DATABASE project_template TO project_user;
+
+service:
+  type: ClusterIP
+  ports:
+    postgresql: 5432
+
+metrics:
+  enabled: false
+
+volumePermissions:
+  enabled: true
