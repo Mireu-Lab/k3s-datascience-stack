@@ -1,0 +1,378 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hdfs-config
+  namespace: hadoop
+data:
+  core-site.xml: |
+    <?xml version="1.0"?>
+    <configuration>
+      <property>
+        <name>fs.defaultFS</name>
+        <value>hdfs://hdfs-namenode:9000</value>
+      </property>
+      <property>
+        <name>hadoop.http.staticuser.user</name>
+        <value>hdfs</value>
+      </property>
+      <property>
+        <name>hadoop.proxyuser.hdfs.hosts</name>
+        <value>*</value>
+      </property>
+      <property>
+        <name>hadoop.proxyuser.hdfs.groups</name>
+        <value>*</value>
+      </property>
+    </configuration>
+  
+  hdfs-site.xml: |
+    <?xml version="1.0"?>
+    <configuration>
+      <property>
+        <name>dfs.replication</name>
+        <value>1</value>
+      </property>
+      <property>
+        <name>dfs.namenode.name.dir</name>
+        <value>file:///hadoop/dfs/name</value>
+      </property>
+      <property>
+        <name>dfs.datanode.data.dir</name>
+        <value>file:///mnt/nvme/hadoop/dfs/data</value>
+      </property>
+      <property>
+        <name>dfs.namenode.http-address</name>
+        <value>0.0.0.0:9870</value>
+      </property>
+      <property>
+        <name>dfs.namenode.secondary.http-address</name>
+        <value>0.0.0.0:9868</value>
+      </property>
+      <property>
+        <name>dfs.webhdfs.enabled</name>
+        <value>true</value>
+      </property>
+      <property>
+        <name>dfs.permissions.enabled</name>
+        <value>true</value>
+      </property>
+    </configuration>
+
+  yarn-site.xml: |
+    <?xml version="1.0"?>
+    <configuration>
+      <property>
+        <name>yarn.resourcemanager.hostname</name>
+        <value>yarn-resourcemanager</value>
+      </property>
+      <property>
+        <name>yarn.resourcemanager.webapp.address</name>
+        <value>0.0.0.0:8088</value>
+      </property>
+      <property>
+        <name>yarn.nodemanager.aux-services</name>
+        <value>mapreduce_shuffle</value>
+      </property>
+      <property>
+        <name>yarn.nodemanager.resource.memory-mb</name>
+        <value>32768</value>
+      </property>
+      <property>
+        <name>yarn.nodemanager.resource.cpu-vcores</name>
+        <value>8</value>
+      </property>
+      <property>
+        <name>yarn.scheduler.maximum-allocation-mb</name>
+        <value>16384</value>
+      </property>
+    </configuration>
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: hdfs-namenode
+  namespace: hadoop
+spec:
+  serviceName: hdfs-namenode
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hdfs-namenode
+  template:
+    metadata:
+      labels:
+        app: hdfs-namenode
+    spec:
+      containers:
+      - name: namenode
+        image: apache/hadoop:latest
+        ports:
+        - containerPort: 9000
+          name: ipc
+        - containerPort: 9870
+          name: http
+        env:
+        - name: HADOOP_CONF_DIR
+          value: /opt/hadoop/etc/hadoop
+        - name: HDFS_NAMENODE_OPTS
+          value: "-Dhadoop.security.logger=INFO,RFAS"
+        command:
+        - sh
+        - -c
+        - |
+          cp /config/* /opt/hadoop/etc/hadoop/
+          if [ ! -d /hadoop/dfs/name/current ]; then
+            hdfs namenode -format -force
+          fi
+          hdfs namenode
+        volumeMounts:
+        - name: config
+          mountPath: /config
+        - name: namenode-data
+          mountPath: /hadoop/dfs/name
+        - name: nvme-storage
+          mountPath: /mnt/nvme
+        - name: hdd-storage
+          mountPath: /mnt/hdd
+        - name: gcs-storage
+          mountPath: /mnt/gcs
+        resources:
+          limits:
+            memory: 4Gi
+            cpu: 2000m
+          requests:
+            memory: 2Gi
+            cpu: 1000m
+      volumes:
+      - name: config
+        configMap:
+          name: hdfs-config
+      - name: nvme-storage
+        hostPath:
+          path: /mnt/nvme
+          type: DirectoryOrCreate
+      - name: hdd-storage
+        hostPath:
+          path: /mnt/hdd
+          type: DirectoryOrCreate
+      - name: gcs-storage
+        hostPath:
+          path: /mnt/gcs
+          type: DirectoryOrCreate
+  volumeClaimTemplates:
+  - metadata:
+      name: namenode-data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: nvme-storage
+      resources:
+        requests:
+          storage: 100Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hdfs-namenode
+  namespace: hadoop
+spec:
+  ports:
+  - port: 9000
+    name: ipc
+  - port: 9870
+    name: http
+  clusterIP: None
+  selector:
+    app: hdfs-namenode
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: hdfs-datanode
+  namespace: hadoop
+spec:
+  serviceName: hdfs-datanode
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hdfs-datanode
+  template:
+    metadata:
+      labels:
+        app: hdfs-datanode
+    spec:
+      containers:
+      - name: datanode
+        image: apache/hadoop:latest
+        ports:
+        - containerPort: 9864
+          name: http
+        - containerPort: 9866
+          name: data
+        - containerPort: 9867
+          name: ipc
+        env:
+        - name: HADOOP_CONF_DIR
+          value: /opt/hadoop/etc/hadoop
+        command:
+        - sh
+        - -c
+        - |
+          cp /config/* /opt/hadoop/etc/hadoop/
+          hdfs datanode
+        volumeMounts:
+        - name: config
+          mountPath: /config
+        - name: nvme-storage
+          mountPath: /mnt/nvme
+        - name: hdd-storage
+          mountPath: /mnt/hdd
+        - name: gcs-storage
+          mountPath: /mnt/gcs
+        resources:
+          limits:
+            memory: 8Gi
+            cpu: 4000m
+          requests:
+            memory: 4Gi
+            cpu: 2000m
+      volumes:
+      - name: config
+        configMap:
+          name: hdfs-config
+      - name: nvme-storage
+        hostPath:
+          path: /mnt/nvme
+          type: DirectoryOrCreate
+      - name: hdd-storage
+        hostPath:
+          path: /mnt/hdd
+          type: DirectoryOrCreate
+      - name: gcs-storage
+        hostPath:
+          path: /mnt/gcs
+          type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hdfs-datanode
+  namespace: hadoop
+spec:
+  ports:
+  - port: 9864
+    name: http
+  - port: 9866
+    name: data
+  - port: 9867
+    name: ipc
+  clusterIP: None
+  selector:
+    app: hdfs-datanode
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: yarn-resourcemanager
+  namespace: hadoop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: yarn-resourcemanager
+  template:
+    metadata:
+      labels:
+        app: yarn-resourcemanager
+    spec:
+      containers:
+      - name: resourcemanager
+        image: apache/hadoop:latest
+        ports:
+        - containerPort: 8088
+          name: http
+        - containerPort: 8030
+          name: scheduler
+        - containerPort: 8031
+          name: tracker
+        - containerPort: 8032
+          name: rm
+        env:
+        - name: HADOOP_CONF_DIR
+          value: /opt/hadoop/etc/hadoop
+        command:
+        - sh
+        - -c
+        - |
+          cp /config/* /opt/hadoop/etc/hadoop/
+          yarn resourcemanager
+        volumeMounts:
+        - name: config
+          mountPath: /config
+        resources:
+          limits:
+            memory: 4Gi
+            cpu: 2000m
+          requests:
+            memory: 2Gi
+            cpu: 1000m
+      volumes:
+      - name: config
+        configMap:
+          name: hdfs-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: yarn-resourcemanager
+  namespace: hadoop
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8088
+    name: http
+  - port: 8030
+    name: scheduler
+  - port: 8031
+    name: tracker
+  - port: 8032
+    name: rm
+  selector:
+    app: yarn-resourcemanager
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hdfs-ingress
+  namespace: hadoop
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+spec:
+  ingressClassName: traefik
+  tls:
+  - hosts:
+    - hdfs.mireu.xyz
+    - yarn.mireu.xyz
+    secretName: mireu-xyz-tls
+  rules:
+  - host: hdfs.mireu.xyz
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: hdfs-namenode
+            port:
+              number: 9870
+  - host: yarn.mireu.xyz
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: yarn-resourcemanager
+            port:
+              number: 8088
