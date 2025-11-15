@@ -1,2 +1,4 @@
-docs/
+.docs*
 k3s.yaml
+.key/
+.env
