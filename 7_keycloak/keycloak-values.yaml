@@ -1,0 +1,13 @@
+# Keycloak Operator Helm Values
+# Helm Chart: keycloak-operator/keycloak-operator
+# Repository: https://kbumsik.io/keycloak-kubernetes/
+
+# Note: This Helm chart only installs the Keycloak Operator
+# The actual Keycloak instance is created via CRD (01-keycloak-instance.yaml)
+
+# Operator configuration
+# The operator watches the namespace where it's installed
+# Default values are sufficient for most use cases
+
+# No additional configuration needed for the operator
+# All Keycloak settings are defined in the Keycloak CR
