@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: fix-jupyterhub-db
+  namespace: jupyterhub
+spec:
+  containers:
+  - name: busybox
+    image: busybox
+    command: ['sh', '-c', 'ls -la /srv/jupyterhub/ && rm -f /srv/jupyterhub/jupyterhub.sqlite* && echo "Database files removed" && sleep 3600']
+    volumeMounts:
+    - name: hub-db
+      mountPath: /srv/jupyterhub
+  volumes:
+  - name: hub-db
+    persistentVolumeClaim:
+      claimName: hub-db-dir
+  restartPolicy: Never

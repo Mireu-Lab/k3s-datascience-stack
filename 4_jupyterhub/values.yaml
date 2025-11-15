@@ -1,0 +1,274 @@
+# JupyterHub Helm Chart Values
+# Official Helm Chart: https://github.com/jupyterhub/zero-to-jupyterhub-k8s
+# Documentation: https://z2jh.jupyter.org/
+
+hub:
+  config:
+    # Keycloak OAuth Configuration (via Google OAuth)
+    # Reference: https://oauthenticator.readthedocs.io/en/latest/tutorials/provider-specific-setup/providers/generic.html
+    JupyterHub:
+      authenticator_class: generic-oauth
+      log_level: DEBUG
+    GenericOAuthenticator:
+      client_id: "jupyterhub"
+      # Client secret should be retrieved from: kubectl get secret jupyterhub-oauth-secret -n keycloak -o jsonpath='{.data.client-secret}' | base64 -d
+      client_secret: "xbnXqWAm5y0Tkxh3uiJkYCwTCfQn2qF5"
+      oauth_callback_url: "https://jupyter.mireu.xyz/hub/oauth_callback"
+      authorize_url: "https://keycloak.mireu.xyz/auth/realms/researchope/protocol/openid-connect/auth"
+      token_url: "http://keycloak-http.keycloak.svc.cluster.local:8080/auth/realms/researchope/protocol/openid-connect/token"
+      userdata_url: "http://keycloak-http.keycloak.svc.cluster.local:8080/auth/realms/researchope/protocol/openid-connect/userinfo"
+      login_service: "Keycloak (Google OAuth)"
+      username_claim: "preferred_username"
+      auth_state_groups_key: "oauth_user.groups"
+      manage_groups: true
+      allowed_groups:
+        - "master-admin"
+      admin_groups:
+        - "master-admin"
+      scope:
+        - openid
+        - profile
+        - email
+      allow_all: false
+      
+  extraConfig:
+    # Git repository workspace creation
+    # Login Email + Repo Name을 기반으로 WorkSpace 생성
+    00-git-repo-spawner: |
+      from kubespawner import KubeSpawner
+      import os
+      import re
+      
+      class GitRepoSpawner(KubeSpawner):
+          async def start(self):
+              # Get user email from OAuth
+              user_email = self.user.name
+              
+              # Git repository URL from user options
+              git_repo_url = getattr(self.user_options, 'git_repo_url', None)
+              
+              if git_repo_url:
+                  # Extract repository name from URL
+                  repo_name = re.sub(r'\.git$', '', os.path.basename(git_repo_url))
+                  
+                  # Create workspace directory: {email}-{repo_name}
+                  workspace_name = f"{user_email}-{repo_name}"
+                  
+                  # Set PVC name
+                  self.pvc_name = f"workspace-{workspace_name}"
+                  
+                  # Add init container to clone repository
+                  self.extra_init_containers = [{
+                      'name': 'git-clone',
+                      'image': 'alpine/git:latest',
+                      'command': ['sh', '-c'],
+                      'args': [f'cd /home/jovyan && if [ ! -d {repo_name} ]; then git clone {git_repo_url}; fi'],
+                      'volumeMounts': [{
+                          'name': 'home',
+                          'mountPath': '/home/jovyan'
+                      }]
+                  }]
+              
+              return await super().start()
+      
+      c.JupyterHub.spawner_class = GitRepoSpawner
+    
+    01-options-form: |
+      # Custom form for Git repository URL
+      c.JupyterHub.spawner_class.options_form = """
+      <label for="git_repo_url">Git Repository URL (optional):</label>
+      <input name="git_repo_url" placeholder="https://github.com/username/repo.git" />
+      """
+
+  db:
+    pvc:
+      storageClassName: local-path
+      accessModes:
+        - ReadWriteOnce
+      storage: 10Gi
+
+singleuser:
+  # Custom image with NVIDIA drivers + JAX
+  # Built and published via GitHub Actions
+  # Registry: https://github.com/orgs/Mireu-Lab/packages
+  image:
+    name: ghcr.io/mireu-lab/jupyterhub-cuda-jax
+    tag: "latest"
+    pullPolicy: Always
+  
+  # CPU and Memory limits
+  cpu:
+    limit: 8
+    guarantee: 2
+  memory:
+    limit: 32G
+    guarantee: 8G
+  
+  # GPU resource allocation
+  extraResource:
+    limits:
+      nvidia.com/gpu: "1"
+    guarantees:
+      nvidia.com/gpu: "1"
+  
+  # Storage configuration
+  storage:
+    type: dynamic
+    dynamic:
+      storageClass: local-path
+      pvcNameTemplate: workspace-{username}
+      volumeNameTemplate: workspace-{username}
+      storageAccessModes:
+        - ReadWriteOnce
+    capacity: 50Gi
+    homeMountPath: /home/jovyan
+  
+  # Environment variables for Spark, HDFS, and PostgreSQL connectivity
+  extraEnv:
+    SPARK_HOME: /opt/spark
+    HADOOP_HOME: /opt/hadoop
+    HADOOP_CONF_DIR: /opt/hadoop/etc/hadoop
+    PYSPARK_PYTHON: /usr/bin/python3
+    PYSPARK_DRIVER_PYTHON: jupyter
+    PYSPARK_DRIVER_PYTHON_OPTS: notebook
+    # HDFS NameNode configuration (Internal K8s DNS)
+    HDFS_NAMENODE_HOST: listener-hdfs-cluster-namenode-default-0.default.svc.cluster.local
+    HDFS_NAMENODE_PORT: "8020"
+    # HDFS Web UI (External Access)
+    HDFS_WEB_UI: https://hdfs.mireu.xyz
+    HDFS_WEB_USER: admin
+    HDFS_WEB_PASSWORD: hdfs@mireu
+    # PostgreSQL connection (Internal K8s DNS)
+    POSTGRES_HOST: postgres-cluster-rw.default.svc.cluster.local
+    POSTGRES_PORT: "5432"
+    POSTGRES_DB: spark_warehouse
+    # PostgreSQL Web UI (External Access)
+    PGADMIN_URL: https://pg.mireu.xyz
+    PGADMIN_EMAIL: admin@mireu.xyz
+    PGADMIN_PASSWORD: admin123!@#
+    # Spark configuration (Internal K8s DNS)
+    SPARK_MASTER_HOST: spark-cluster-master-svc.spark-operator.svc.cluster.local
+    SPARK_MASTER_PORT: "7077"
+    SPARK_MASTER: k8s://https://kubernetes.default.svc:443
+    # Spark Web UI (External Access)
+    SPARK_WEB_UI: https://spark.mireu.xyz
+    SPARK_WEB_USER: admin
+    SPARK_WEB_PASSWORD: spark@mireu
+    # Spark memory configuration
+    SPARK_DRIVER_MEMORY: 4g
+    SPARK_EXECUTOR_MEMORY: 4g
+  
+  # Default URL to JupyterLab
+  defaultUrl: "/lab"
+  
+  # Run as jovyan user with sudo privileges (safer than root)
+  # jovyan user has NOPASSWD sudo access configured in Dockerfile
+  uid: 1000
+  fsGid: 100
+  
+  # Allow privilege escalation for sudo
+  allowPrivilegeEscalation: true
+  
+  # Command to start JupyterLab
+  cmd: ["start-notebook.sh", "--allow-root"]
+  
+  # HDFS Mount configuration
+  extraVolumes:
+    - name: hdfs-nvme
+      hostPath:
+        path: /mnt/nvme/hdfs-data
+        type: Directory
+    - name: hdfs-hdd
+      hostPath:
+        path: /mnt/hdd/hdfs-data
+        type: Directory
+    - name: hdfs-gcs
+      hostPath:
+        path: /mnt/gcs/hdfs-data
+        type: Directory
+    - name: hadoop-config
+      configMap:
+        name: hadoop-config
+  
+  extraVolumeMounts:
+    - name: hdfs-nvme
+      mountPath: /mnt/hdfs/hot
+      readOnly: false
+    - name: hdfs-hdd
+      mountPath: /mnt/hdfs/cold
+      readOnly: false
+    - name: hdfs-gcs
+      mountPath: /mnt/hdfs/archive
+      readOnly: false
+    - name: hadoop-config
+      mountPath: /opt/hadoop/etc/hadoop
+      readOnly: true
+
+# Scheduling configuration
+scheduling:
+  userScheduler:
+    enabled: false
+  
+  # Pod placement on HP Z440 node with GPU
+  userPods:
+    nodeAffinity:
+      matchNodePurpose: require
+      matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+            - hp-z440
+
+# Prescheduler to warm up nodes
+prePuller:
+  hook:
+    enabled: false
+  continuous:
+    enabled: false
+
+# Ingress configuration (optional)
+ingress:
+  enabled: false
+  # If you want to enable ingress:
+  # enabled: true
+  # hosts:
+  #   - jupyter.mireu.xyz
+  # tls:
+  #   - secretName: jupyterhub-tls
+  #     hosts:
+  #       - jupyter.mireu.xyz
+
+# RBAC
+rbac:
+  create: true
+
+# Service type
+proxy:
+  service:
+    type: NodePort
+    nodePorts:
+      http: 30080
+      https: 30443
+  
+  # HTTPS configuration (optional)
+  https:
+    enabled: false
+    # type: manual
+    # manual:
+    #   key: |
+    #     -----BEGIN PRIVATE KEY-----
+    #     ...
+    #     -----END PRIVATE KEY-----
+    #   cert: |
+    #     -----BEGIN CERTIFICATE-----
+    #     ...
+    #     -----END CERTIFICATE-----
+
+# Culling idle servers
+cull:
+  enabled: true
+  timeout: 3600
+  every: 600
+  users: false
+  removeNamedServers: false
+  maxAge: 0
