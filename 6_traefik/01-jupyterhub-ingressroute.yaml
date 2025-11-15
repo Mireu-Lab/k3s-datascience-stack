@@ -1,0 +1,49 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: jupyterhub
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: redirect-https
+  namespace: jupyterhub
+spec:
+  redirectScheme:
+    scheme: https
+    permanent: true
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: jupyterhub-ingress-http
+  namespace: jupyterhub
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`jupyter.mireu.xyz`)
+      kind: Rule
+      services:
+        - name: proxy-public
+          port: 80
+      middlewares:
+        - name: redirect-https
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: jupyterhub-ingress-https
+  namespace: jupyterhub
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`jupyter.mireu.xyz`)
+      kind: Rule
+      services:
+        - name: proxy-public
+          port: 80
+  tls:
+    secretName: cloudflare-origin-cert

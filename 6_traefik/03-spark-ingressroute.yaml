@@ -1,0 +1,55 @@
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: redirect-https
+  namespace: spark-operator
+spec:
+  redirectScheme:
+    scheme: https
+    permanent: true
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: spark-auth
+  namespace: spark-operator
+spec:
+  basicAuth:
+    secret: spark-auth-secret
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: spark-ui-ingress-http
+  namespace: spark-operator
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`spark.mireu.xyz`)
+      kind: Rule
+      services:
+        - name: spark-cluster-master-svc
+          port: 8080
+      middlewares:
+        - name: redirect-https
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: spark-ui-ingress-https
+  namespace: spark-operator
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`spark.mireu.xyz`)
+      kind: Rule
+      services:
+        - name: spark-cluster-master-svc
+          port: 8080
+      middlewares:
+        - name: spark-auth
+  tls:
+    secretName: cloudflare-origin-cert
