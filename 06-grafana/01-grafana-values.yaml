@@ -1,0 +1,109 @@
+global:
+  storageClass: "nvme-storage"
+
+admin:
+  user: admin
+  password: "GrafanaAdmin123!"
+
+persistence:
+  enabled: true
+  storageClass: "nvme-storage"
+  size: 50Gi
+
+service:
+  type: ClusterIP
+  ports:
+    grafana: 3000
+
+ingress:
+  enabled: true
+  ingressClassName: traefik
+  hostname: grafana.mireu.xyz
+  tls: true
+  extraTls:
+    - hosts:
+        - grafana.mireu.xyz
+      secretName: mireu-xyz-tls
+
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        url: http://prometheus-server.monitoring.svc.cluster.local
+        access: proxy
+        isDefault: true
+      
+      - name: PostgreSQL
+        type: postgres
+        url: postgresql.postgresql.svc.cluster.local:5432
+        database: postgres
+        user: postgres
+        secureJsonData:
+          password: "PostgresAdmin123!"
+        jsonData:
+          sslmode: "disable"
+
+dashboardsProvider:
+  enabled: true
+
+dashboardsConfigMaps:
+  - configMapName: grafana-dashboards
+    fileName: k8s-cluster-monitoring.json
+  - configMapName: grafana-dashboards
+    fileName: hadoop-monitoring.json
+  - configMapName: grafana-dashboards
+    fileName: spark-monitoring.json
+  - configMapName: grafana-dashboards
+    fileName: postgresql-monitoring.json
+  - configMapName: grafana-dashboards
+    fileName: jupyterhub-monitoring.json
+
+plugins:
+  - grafana-piechart-panel
+  - grafana-clock-panel
+  - grafana-simple-json-datasource
+
+grafana:
+  extraEnvVars:
+    - name: GF_SERVER_ROOT_URL
+      value: "https://grafana.mireu.xyz"
+    - name: GF_SERVER_DOMAIN
+      value: "grafana.mireu.xyz"
+    - name: GF_AUTH_GENERIC_OAUTH_ENABLED
+      value: "true"
+    - name: GF_AUTH_GENERIC_OAUTH_NAME
+      value: "Keycloak"
+    - name: GF_AUTH_GENERIC_OAUTH_CLIENT_ID
+      value: "grafana"
+    - name: GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET
+      value: "YOUR_KEYCLOAK_CLIENT_SECRET"
+    - name: GF_AUTH_GENERIC_OAUTH_SCOPES
+      value: "openid profile email"
+    - name: GF_AUTH_GENERIC_OAUTH_AUTH_URL
+      value: "https://keycloak.mireu.xyz/realms/master/protocol/openid-connect/auth"
+    - name: GF_AUTH_GENERIC_OAUTH_TOKEN_URL
+      value: "https://keycloak.mireu.xyz/realms/master/protocol/openid-connect/token"
+    - name: GF_AUTH_GENERIC_OAUTH_API_URL
+      value: "https://keycloak.mireu.xyz/realms/master/protocol/openid-connect/userinfo"
+    - name: GF_AUTH_SIGNOUT_REDIRECT_URL
+      value: "https://keycloak.mireu.xyz/realms/master/protocol/openid-connect/logout"
+
+resources:
+  limits:
+    memory: 4Gi
+    cpu: 2000m
+  requests:
+    memory: 2Gi
+    cpu: 1000m
+
+livenessProbe:
+  enabled: true
+  initialDelaySeconds: 60
+  periodSeconds: 10
+
+readinessProbe:
+  enabled: true
+  initialDelaySeconds: 30
+  periodSeconds: 10
